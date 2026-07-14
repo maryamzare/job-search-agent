@@ -1,0 +1,18 @@
+# Secrets — never commit
+.env
+
+# Personal data — real resume, application history, and generated documents stay local
+data/*
+!data/*.example.txt
+!data/*.example.json
+outputs/
+CLAUDE.md
+.claude/
+uber_tpm_159858.json
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store

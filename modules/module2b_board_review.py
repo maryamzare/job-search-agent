@@ -1,0 +1,125 @@
+"""
+Module 2b — Advisory Board Review
+Runs a four-reviewer board + chair synthesis on shortlisted jobs.
+All four reviewers run in parallel via AsyncAnthropic.
+"""
+
+import asyncio
+import json
+import re
+import anthropic
+from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, JOB_QUEUE_PATH, MASTER_RESUME_PATH
+
+async_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+
+BOARD = {
+    "fit_reviewer": """You are evaluating job-resume fit.
+Given a job posting and resume, return JSON:
+{"score": 0-10, "verdict": "strong|moderate|weak",
+ "key_matches": [...], "gaps": [...]}""",
+
+    "strategy_reviewer": """You are a career strategist.
+Evaluate if this role advances the candidate's career arc.
+Return JSON: {"score": 0-10, "verdict": "...",
+"career_signal": "up|lateral|down", "rationale": "..."}""",
+
+    "risk_reviewer": """You are a risk analyst reviewing job postings.
+Flag red flags: vague comp, culture issues, unstable co,
+unrealistic scope. Return JSON: {"score": 0-10,
+"flags": [...], "verdict": "proceed|caution|skip"}""",
+
+    "effort_reviewer": """You review application effort vs. payoff.
+Is this role worth the customization time given its priority score?
+Return JSON: {"score": 0-10, "effort": "low|medium|high",
+"priority_fit": "yes|no", "recommendation": "..."}""",
+}
+
+CHAIR_PROMPT = """You are the Chair of a hiring advisory board.
+Four reviewers assessed this job. Synthesize into a final
+recommendation with a composite score and action.
+Reviews: {reviews}
+Return JSON: {{"composite_score": 0-10, "action": "apply|defer|skip",
+"summary": "2 sentences", "top_concern": "...", "top_strength": "..."}}"""
+
+
+def _parse_json(text: str) -> dict:
+    text = re.sub(r"^```(?:json)?\s*", "", text.strip())
+    text = re.sub(r"\s*```$", "", text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {"parse_error": text[:200]}
+
+
+async def _call_reviewer(role: str, system_prompt: str, content: str) -> tuple[str, dict]:
+    response = await async_client.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=MAX_TOKENS,
+        system=system_prompt,
+        messages=[{"role": "user", "content": content}],
+    )
+    return role, _parse_json(response.content[0].text)
+
+
+async def run_advisory_board(job: dict, resume: str) -> dict:
+    content = f"JOB:\n{json.dumps(job, indent=2)}\n\nRESUME:\n{resume}"
+
+    # All four reviewers run in parallel
+    results = await asyncio.gather(
+        *[_call_reviewer(role, prompt, content) for role, prompt in BOARD.items()]
+    )
+    reviews = dict(results)
+
+    # Chair synthesizes
+    chair_response = await async_client.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=MAX_TOKENS,
+        messages=[{
+            "role": "user",
+            "content": CHAIR_PROMPT.format(reviews=json.dumps(reviews, indent=2)),
+        }],
+    )
+    board_decision = _parse_json(chair_response.content[0].text)
+
+    return {"reviews": reviews, "board_decision": board_decision}
+
+
+def review_shortlisted(statuses: list = None) -> None:
+    if statuses is None:
+        statuses = ["shortlisted"]
+
+    with open(MASTER_RESUME_PATH) as f:
+        resume = f.read()
+
+    with open(JOB_QUEUE_PATH) as f:
+        queue = json.load(f)
+
+    updated = 0
+    for job in queue["jobs"]:
+        if job.get("status") not in statuses:
+            continue
+        if job.get("board_decision"):
+            print(f"[board] Skipping (already reviewed): {job.get('title')} @ {job.get('company')}")
+            continue
+
+        print(f"[board] Reviewing: {job.get('title')} @ {job.get('company')}")
+        result = asyncio.run(run_advisory_board(job, resume))
+        job["board_reviews"] = result["reviews"]
+        job["board_decision"] = result["board_decision"]
+
+        decision = result["board_decision"]
+        print(
+            f"  → action={decision.get('action')}  "
+            f"score={decision.get('composite_score')}  "
+            f"strength: {decision.get('top_strength', '')[:60]}"
+        )
+        updated += 1
+
+    with open(JOB_QUEUE_PATH, "w") as f:
+        json.dump(queue, f, indent=2)
+
+    print(f"[board] Board review complete — {updated} jobs reviewed")
+
+
+if __name__ == "__main__":
+    review_shortlisted()

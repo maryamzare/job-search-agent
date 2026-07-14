@@ -1,0 +1,20 @@
+Jane Doe
+Senior Technical Program Manager | Platform Strategy | Data Systems
+jane.doe@example.com | (555) 555-0100 | linkedin.com/in/janedoe | Seattle, WA
+
+PROFESSIONAL SUMMARY
+Senior Technical Program Manager with 8+ years of experience leading large-scale
+platform modernization and data infrastructure initiatives. Replace this file's
+contents with your own resume and save it as data/master_resume.txt.
+
+PROFESSIONAL EXPERIENCE
+
+EXAMPLE CORP | Senior Technical Program Manager | 2022 – Present
+• Led cross-functional execution across multiple engineering teams, achieving 99% on-time delivery.
+• Delivered a major platform modernization on schedule and within budget.
+
+EDUCATION
+B.S. Computer Science — Example University
+
+CERTIFICATIONS
+PMP

@@ -1,0 +1,25 @@
+{
+  "jobs": [
+    {
+      "title": "Senior Technical Program Manager, Data Platform",
+      "company": "Example AI Co",
+      "location": "Seattle, WA",
+      "url": "https://example.com/jobs/123",
+      "apply_url": "https://example.com/jobs/123/apply",
+      "description": "Full job description text goes here...",
+      "status": "discovered"
+    },
+    {
+      "title": "Technical Program Manager, Infrastructure",
+      "company": "Sample Startup",
+      "location": "Remote - US",
+      "url": "https://example.com/jobs/456",
+      "apply_url": "https://example.com/jobs/456/apply",
+      "description": "Full job description text goes here...",
+      "status": "shortlisted",
+      "fit_score": 82,
+      "fit_reasons": ["Example reason 1", "Example reason 2"],
+      "fit_gaps": ["Example gap 1"]
+    }
+  ]
+}
