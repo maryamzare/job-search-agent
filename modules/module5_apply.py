@@ -34,9 +34,9 @@ def print_application_materials(job: dict) -> None:
 def apply_to_shortlisted() -> None:
     queue = load_queue(JOB_QUEUE_PATH)
 
-    shortlisted = [j for j in queue["jobs"] if j.get("status") == "shortlisted"]
+    shortlisted = [j for j in queue["jobs"] if j.get("status") in ("shortlisted", "board_approved")]
     if not shortlisted:
-        print("[apply] No shortlisted jobs. Run 'python3 main.py pipeline' to check your queue.")
+        print("[apply] No shortlisted/board-approved jobs. Run 'python3 main.py pipeline' to check your queue.")
         return
 
     print(f"\n[apply] Starting application flow for {len(shortlisted)} job(s).")

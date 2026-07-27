@@ -75,6 +75,21 @@ async def run_advisory_board(job: dict, resume: str) -> dict:
     return {"reviews": reviews, "board_decision": board_decision}
 
 
+def _apply_board_decision(job: dict, decision: dict) -> None:
+    """Advance the job's status based on the board's verdict.
+
+    apply -> board_approved (unlocks resume/coverletter/apply steps)
+    skip  -> filtered_out (same terminal state as a low fit score)
+    defer -> left as "shortlisted" for a human to decide; the board_decision
+             fields are still saved so the reasoning is visible in the tracker.
+    """
+    action = decision.get("action")
+    if action == "apply":
+        job["status"] = "board_approved"
+    elif action == "skip":
+        job["status"] = "filtered_out"
+
+
 def review_shortlisted(statuses: list = None) -> None:
     if statuses is None:
         statuses = ["shortlisted"]
@@ -98,8 +113,9 @@ def review_shortlisted(statuses: list = None) -> None:
         job["board_decision"] = result["board_decision"]
 
         decision = result["board_decision"]
+        _apply_board_decision(job, decision)
         print(
-            f"  → action={decision.get('action')}  "
+            f"  → action={decision.get('action')}  status={job.get('status')}  "
             f"score={decision.get('composite_score')}  "
             f"strength: {decision.get('top_strength', '')[:60]}"
         )
