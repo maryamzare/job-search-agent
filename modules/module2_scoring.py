@@ -36,7 +36,7 @@ def load_resume() -> str:
 
 
 def score_job(job: dict) -> dict:
-    description = job.get("description", job.get("title", ""))
+    description = job.get("description") or job.get("title", "")
     resume = load_resume()
 
     prompt = f"""Candidate profile:
