@@ -4,9 +4,9 @@ Displays the current state of job_queue.json and allows status updates.
 Statuses: discovered → shortlisted | filtered_out → applied → interviewing → offer | rejected
 """
 
-import json
 from datetime import date
 from config import JOB_QUEUE_PATH
+from modules.util import load_queue as _load_queue, save_queue as _save_queue
 
 VALID_STATUSES = [
     "discovered",
@@ -30,13 +30,11 @@ STATUS_EMOJI = {
 
 
 def load_queue() -> dict:
-    with open(JOB_QUEUE_PATH) as f:
-        return json.load(f)
+    return _load_queue(JOB_QUEUE_PATH)
 
 
 def save_queue(queue: dict) -> None:
-    with open(JOB_QUEUE_PATH, "w") as f:
-        json.dump(queue, f, indent=2)
+    _save_queue(queue, JOB_QUEUE_PATH)
 
 
 def print_summary() -> None:

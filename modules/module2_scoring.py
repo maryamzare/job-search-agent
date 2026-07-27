@@ -4,10 +4,9 @@ Uses Claude to score each discovered job against Marmar's profile.
 Filters out jobs below MIN_FIT_SCORE.
 """
 
-import json
-import re
 import anthropic
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MIN_FIT_SCORE, JOB_QUEUE_PATH, MASTER_RESUME_PATH
+from modules.util import load_queue, save_queue, parse_llm_json
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -61,20 +60,15 @@ Score this candidate's fit for this job."""
         messages=[{"role": "user", "content": prompt}],
     )
 
-    raw = response.content[0].text.strip()
-    raw = re.sub(r"^```(?:json)?\s*", "", raw)
-    raw = re.sub(r"\s*```$", "", raw)
-    try:
-        result = json.loads(raw)
-    except json.JSONDecodeError:
+    result = parse_llm_json(response.content[0].text)
+    if "parse_error" in result:
         result = {"score": 0, "reasons": ["parse error"], "gaps": []}
 
     return result
 
 
 def score_all_discovered() -> None:
-    with open(JOB_QUEUE_PATH) as f:
-        queue = json.load(f)
+    queue = load_queue(JOB_QUEUE_PATH)
 
     for job in queue["jobs"]:
         if job.get("status") != "discovered":
@@ -92,8 +86,7 @@ def score_all_discovered() -> None:
             job["status"] = "filtered_out"
             print(f"[scoring] Filtered out (score {job['fit_score']})")
 
-    with open(JOB_QUEUE_PATH, "w") as f:
-        json.dump(queue, f, indent=2)
+    save_queue(queue, JOB_QUEUE_PATH)
 
     shortlisted = sum(1 for j in queue["jobs"] if j.get("status") == "shortlisted")
     print(f"[scoring] {shortlisted} jobs shortlisted")

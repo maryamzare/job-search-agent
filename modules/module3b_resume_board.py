@@ -7,10 +7,10 @@ If the resume isn't ready to submit, triggers a rewrite pass automatically.
 import asyncio
 import json
 import os
-import re
 import anthropic
 from anthropic import APIConnectionError, APIStatusError
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, JOB_QUEUE_PATH, RESUME_OUTPUT_DIR
+from modules.util import slugify as _slugify, load_queue, save_queue, parse_llm_json as _parse_json
 
 async_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 sync_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -124,19 +124,6 @@ Original resume:
 {resume}"""
 
 
-def _slugify(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
-
-
-def _parse_json(text: str) -> dict:
-    text = re.sub(r"^```(?:json)?\s*", "", text.strip())
-    text = re.sub(r"\s*```$", "", text)
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return {"parse_error": text[:200]}
-
-
 async def _with_retry(coro_fn, retries: int = 3, base_delay: float = 2.0):
     for attempt in range(retries):
         try:
@@ -235,8 +222,7 @@ def review_resumes(statuses: list = None) -> None:
     if statuses is None:
         statuses = ["shortlisted", "board_approved"]
 
-    with open(JOB_QUEUE_PATH) as f:
-        queue = json.load(f)
+    queue = load_queue(JOB_QUEUE_PATH)
 
     updated = 0
     for job in queue["jobs"]:
@@ -269,8 +255,7 @@ def review_resumes(statuses: list = None) -> None:
         )
         updated += 1
 
-    with open(JOB_QUEUE_PATH, "w") as f:
-        json.dump(queue, f, indent=2)
+    save_queue(queue, JOB_QUEUE_PATH)
 
     print(f"[resume-board] Done — {updated} resumes reviewed")
 

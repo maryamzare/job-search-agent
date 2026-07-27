@@ -5,9 +5,9 @@ Saves result to outputs/cover_letters/<slug>.txt
 """
 
 import os
-import re
 import anthropic
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MASTER_RESUME_PATH, COVERLETTER_OUTPUT_DIR
+from modules.util import slugify, load_queue
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -28,10 +28,6 @@ Certified: PMP, SAFe, CSM.
 Specializes in: AI/ML programs, healthtech, data platforms, enterprise SaaS.
 Located in Seattle, WA.
 """
-
-
-def slugify(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
 
 
 def generate_cover_letter(job: dict) -> str:
@@ -85,11 +81,9 @@ def generate_and_save(job: dict) -> str:
 
 
 if __name__ == "__main__":
-    import json
     from config import JOB_QUEUE_PATH
 
-    with open(JOB_QUEUE_PATH) as f:
-        queue = json.load(f)
+    queue = load_queue(JOB_QUEUE_PATH)
 
     for job in queue["jobs"]:
         if job.get("status") == "shortlisted":

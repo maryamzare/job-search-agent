@@ -6,9 +6,9 @@ All four reviewers run in parallel via AsyncAnthropic.
 
 import asyncio
 import json
-import re
 import anthropic
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, JOB_QUEUE_PATH, MASTER_RESUME_PATH
+from modules.util import load_queue, save_queue, parse_llm_json
 
 async_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -42,15 +42,6 @@ Return JSON: {{"composite_score": 0-10, "action": "apply|defer|skip",
 "summary": "2 sentences", "top_concern": "...", "top_strength": "..."}}"""
 
 
-def _parse_json(text: str) -> dict:
-    text = re.sub(r"^```(?:json)?\s*", "", text.strip())
-    text = re.sub(r"\s*```$", "", text)
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return {"parse_error": text[:200]}
-
-
 async def _call_reviewer(role: str, system_prompt: str, content: str) -> tuple[str, dict]:
     response = await async_client.messages.create(
         model=CLAUDE_MODEL,
@@ -58,7 +49,7 @@ async def _call_reviewer(role: str, system_prompt: str, content: str) -> tuple[s
         system=system_prompt,
         messages=[{"role": "user", "content": content}],
     )
-    return role, _parse_json(response.content[0].text)
+    return role, parse_llm_json(response.content[0].text)
 
 
 async def run_advisory_board(job: dict, resume: str) -> dict:
@@ -79,7 +70,7 @@ async def run_advisory_board(job: dict, resume: str) -> dict:
             "content": CHAIR_PROMPT.format(reviews=json.dumps(reviews, indent=2)),
         }],
     )
-    board_decision = _parse_json(chair_response.content[0].text)
+    board_decision = parse_llm_json(chair_response.content[0].text)
 
     return {"reviews": reviews, "board_decision": board_decision}
 
@@ -91,8 +82,7 @@ def review_shortlisted(statuses: list = None) -> None:
     with open(MASTER_RESUME_PATH) as f:
         resume = f.read()
 
-    with open(JOB_QUEUE_PATH) as f:
-        queue = json.load(f)
+    queue = load_queue(JOB_QUEUE_PATH)
 
     updated = 0
     for job in queue["jobs"]:
@@ -115,8 +105,7 @@ def review_shortlisted(statuses: list = None) -> None:
         )
         updated += 1
 
-    with open(JOB_QUEUE_PATH, "w") as f:
-        json.dump(queue, f, indent=2)
+    save_queue(queue, JOB_QUEUE_PATH)
 
     print(f"[board] Board review complete — {updated} jobs reviewed")
 

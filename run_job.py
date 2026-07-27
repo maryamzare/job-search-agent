@@ -1,5 +1,5 @@
 """One-off pipeline runner for a single manually-added job."""
-import sys, os, json, asyncio, re
+import sys, os, asyncio
 
 os.chdir("/Users/marmar/job-search-agent")
 from dotenv import load_dotenv
@@ -14,20 +14,17 @@ import module3_resume as resume
 import module3b_resume_board as resume_board
 import module4_coverletter as coverletter
 from config import JOB_QUEUE_PATH, MASTER_RESUME_PATH
+from util import slugify, load_queue, save_queue
 
 COMPANY = sys.argv[1]
 TITLE_KEYWORD = sys.argv[2]
 FORCE = "--force" in sys.argv  # override scorer and board
 
-def slugify(t):
-    return re.sub(r"[^a-z0-9]+", "_", t.lower()).strip("_")
-
 # 1. Score
 print("=== SCORING ===")
 scoring.score_all_discovered()
 
-with open(JOB_QUEUE_PATH) as f:
-    queue = json.load(f)
+queue = load_queue(JOB_QUEUE_PATH)
 job = next(j for j in queue["jobs"] if j["company"] == COMPANY and TITLE_KEYWORD in j["title"])
 print(f"Score: {job.get('fit_score')} | Status: {job.get('status')}")
 
@@ -35,8 +32,7 @@ if job.get("status") == "filtered_out":
     if FORCE:
         print("Score below threshold — overriding per user request")
         job["status"] = "shortlisted"
-        with open(JOB_QUEUE_PATH, "w") as f:
-            json.dump(queue, f, indent=2)
+        save_queue(queue, JOB_QUEUE_PATH)
     else:
         print("Filtered out. Re-run with --force to override.")
         sys.exit(0)
@@ -58,8 +54,7 @@ if decision.get("action") != "apply":
         print("Board says defer — overriding per user request, proceeding")
     else:
         print("Board says defer/skip. Re-run with --force to override.")
-        with open(JOB_QUEUE_PATH, "w") as f:
-            json.dump(queue, f, indent=2)
+        save_queue(queue, JOB_QUEUE_PATH)
         sys.exit(0)
 
 job["status"] = "board_approved"
@@ -93,7 +88,6 @@ print("\n=== COVER LETTER ===")
 coverletter.generate_and_save(job)
 
 # Save queue
-with open(JOB_QUEUE_PATH, "w") as f:
-    json.dump(queue, f, indent=2)
+save_queue(queue, JOB_QUEUE_PATH)
 
 print("\n=== DONE ===")

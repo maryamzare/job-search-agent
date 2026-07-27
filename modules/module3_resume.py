@@ -5,9 +5,9 @@ Saves result to outputs/tailored_resumes/<slug>.txt
 """
 
 import os
-import re
 import anthropic
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MASTER_RESUME_PATH, RESUME_OUTPUT_DIR
+from modules.util import slugify, load_queue
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -29,10 +29,6 @@ RULES — follow all of these exactly:
 5. FACTS ONLY: Do not invent experience, technologies, or metrics. Do not claim domain expertise the candidate does not have.
 
 6. FORMAT: Plain text, section headers in ALL CAPS, approximately 600-700 words total."""
-
-
-def slugify(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
 
 
 def tailor_resume(job: dict) -> str:
@@ -83,11 +79,9 @@ def tailor_and_save(job: dict) -> str:
 
 
 if __name__ == "__main__":
-    import json
     from config import JOB_QUEUE_PATH
 
-    with open(JOB_QUEUE_PATH) as f:
-        queue = json.load(f)
+    queue = load_queue(JOB_QUEUE_PATH)
 
     for job in queue["jobs"]:
         if job.get("status") == "shortlisted":

@@ -4,16 +4,11 @@ Opens each shortlisted job URL, waits for manual form submission,
 then confirms with the user before updating the tracker.
 """
 
-import json
-import re
 import webbrowser
 from datetime import date
 from pathlib import Path
 from config import JOB_QUEUE_PATH, RESUME_OUTPUT_DIR, COVERLETTER_OUTPUT_DIR
-
-
-def slugify(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+from modules.util import slugify, load_queue, save_queue
 
 
 def print_application_materials(job: dict) -> None:
@@ -37,8 +32,7 @@ def print_application_materials(job: dict) -> None:
 
 
 def apply_to_shortlisted() -> None:
-    with open(JOB_QUEUE_PATH) as f:
-        queue = json.load(f)
+    queue = load_queue(JOB_QUEUE_PATH)
 
     shortlisted = [j for j in queue["jobs"] if j.get("status") == "shortlisted"]
     if not shortlisted:
@@ -82,8 +76,7 @@ def apply_to_shortlisted() -> None:
             print(f"  Marked as IN_PROGRESS — come back to finish this one.")
             skipped += 1
 
-    with open(JOB_QUEUE_PATH, "w") as f:
-        json.dump(queue, f, indent=2)
+    save_queue(queue, JOB_QUEUE_PATH)
 
     print(f"\n[apply] Done. {submitted} submitted, {skipped} left in progress.")
     print("[apply] Run 'python3 main.py status' to see your full pipeline.\n")

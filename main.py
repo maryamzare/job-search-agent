@@ -32,6 +32,7 @@ import modules.module6_tracker as tracker
 def cmd_add():
     import json
     from config import JOB_QUEUE_PATH
+    from modules.util import load_queue, save_queue
     if len(sys.argv) < 3:
         print("Usage: python main.py add <path-to-job.json>")
         sys.exit(1)
@@ -39,15 +40,13 @@ def cmd_add():
     with open(path) as f:
         job = json.load(f)
     job["status"] = "discovered"
-    with open(JOB_QUEUE_PATH) as f:
-        queue = json.load(f)
+    queue = load_queue(JOB_QUEUE_PATH)
     existing_urls = {j.get("url") for j in queue["jobs"]}
     if job.get("url") in existing_urls:
         print(f"[add] Already in queue: {job.get('title')} @ {job.get('company')}")
         return
     queue["jobs"].append(job)
-    with open(JOB_QUEUE_PATH, "w") as f:
-        json.dump(queue, f, indent=2)
+    save_queue(queue, JOB_QUEUE_PATH)
     print(f"[add] Added: {job.get('title')} @ {job.get('company')}")
 
 
@@ -61,20 +60,18 @@ def cmd_score():
 
 
 def cmd_resume():
-    import json
     from config import JOB_QUEUE_PATH
-    with open(JOB_QUEUE_PATH) as f:
-        queue = json.load(f)
+    from modules.util import load_queue
+    queue = load_queue(JOB_QUEUE_PATH)
     for job in queue["jobs"]:
         if job.get("status") in ("shortlisted", "board_approved"):
             resume.tailor_and_save(job)
 
 
 def cmd_coverletter():
-    import json
     from config import JOB_QUEUE_PATH
-    with open(JOB_QUEUE_PATH) as f:
-        queue = json.load(f)
+    from modules.util import load_queue
+    queue = load_queue(JOB_QUEUE_PATH)
     for job in queue["jobs"]:
         if job.get("status") in ("shortlisted", "board_approved"):
             coverletter.generate_and_save(job)

@@ -15,6 +15,7 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
 from config import TARGET_ROLES, TARGET_LOCATIONS, JOB_QUEUE_PATH
+from modules.util import load_queue as _load_queue, save_queue as _save_queue
 
 # Companies to query directly via ATS APIs (slug: display name)
 GREENHOUSE_COMPANIES = {
@@ -264,13 +265,11 @@ def discover_jobs() -> list[dict]:
 
 
 def load_queue() -> dict:
-    with open(JOB_QUEUE_PATH) as f:
-        return json.load(f)
+    return _load_queue(JOB_QUEUE_PATH)
 
 
 def save_queue(queue: dict) -> None:
-    with open(JOB_QUEUE_PATH, "w") as f:
-        json.dump(queue, f, indent=2)
+    _save_queue(queue, JOB_QUEUE_PATH)
 
 
 def add_new_jobs_to_queue(new_jobs: list[dict]) -> int:
