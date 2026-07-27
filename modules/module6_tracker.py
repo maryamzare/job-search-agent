@@ -1,7 +1,8 @@
 """
 Module 6 — Application Tracker
 Displays the current state of job_queue.json and allows status updates.
-Statuses: discovered → shortlisted | filtered_out → applied → interviewing → offer | rejected
+Statuses: discovered → shortlisted → board_approved | filtered_out → applied
+→ in_progress | interviewing → questionnaire_submitted → offer | closed | rejected
 """
 
 from datetime import date
@@ -11,20 +12,28 @@ from modules.util import load_queue as _load_queue, save_queue as _save_queue
 VALID_STATUSES = [
     "discovered",
     "shortlisted",
+    "board_approved",
     "filtered_out",
     "applied",
+    "in_progress",
     "interviewing",
+    "questionnaire_submitted",
     "offer",
+    "closed",
     "rejected",
 ]
 
 STATUS_EMOJI = {
     "discovered": "🔍",
     "shortlisted": "⭐",
+    "board_approved": "✅",
     "filtered_out": "✗",
     "applied": "📤",
+    "in_progress": "✍️",
     "interviewing": "🗣",
+    "questionnaire_submitted": "📝",
     "offer": "🎉",
+    "closed": "🔒",
     "rejected": "✗",
 }
 
