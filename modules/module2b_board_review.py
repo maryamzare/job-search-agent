@@ -120,8 +120,7 @@ def review_shortlisted(statuses: list = None) -> None:
             f"strength: {decision.get('top_strength', '')[:60]}"
         )
         updated += 1
-
-    save_queue(queue, JOB_QUEUE_PATH)
+        save_queue(queue, JOB_QUEUE_PATH)
 
     print(f"[board] Board review complete — {updated} jobs reviewed")
 

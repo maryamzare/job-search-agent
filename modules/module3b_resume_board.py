@@ -254,8 +254,7 @@ def review_resumes(statuses: list = None) -> None:
             f"ready={scorecard.get('ready_to_submit')}"
         )
         updated += 1
-
-    save_queue(queue, JOB_QUEUE_PATH)
+        save_queue(queue, JOB_QUEUE_PATH)
 
     print(f"[resume-board] Done — {updated} resumes reviewed")
 

@@ -86,7 +86,7 @@ def score_all_discovered() -> None:
             job["status"] = "filtered_out"
             print(f"[scoring] Filtered out (score {job['fit_score']})")
 
-    save_queue(queue, JOB_QUEUE_PATH)
+        save_queue(queue, JOB_QUEUE_PATH)
 
     shortlisted = sum(1 for j in queue["jobs"] if j.get("status") == "shortlisted")
     print(f"[scoring] {shortlisted} jobs shortlisted")
