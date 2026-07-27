@@ -5,7 +5,7 @@ then confirms with the user before updating the tracker.
 """
 
 import webbrowser
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from config import JOB_QUEUE_PATH, RESUME_OUTPUT_DIR, COVERLETTER_OUTPUT_DIR
 from modules.util import slugify, load_queue, save_queue
@@ -79,6 +79,7 @@ def apply_to_shortlisted() -> None:
         if answer == "y":
             job["status"] = "applied"
             job["applied_date"] = str(date.today())
+            job["application_submitted_at"] = datetime.now(timezone.utc).isoformat()
             print(f"  Marked as APPLIED ✓")
             submitted += 1
         else:

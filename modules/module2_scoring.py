@@ -4,6 +4,8 @@ Uses Claude to score each discovered job against Marmar's profile.
 Filters out jobs below MIN_FIT_SCORE.
 """
 
+from datetime import datetime, timezone
+
 from config import (
     ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MIN_FIT_SCORE,
     JOB_QUEUE_PATH, MASTER_RESUME_PATH, CANDIDATE_PROFILE,
@@ -74,6 +76,7 @@ def score_all_discovered() -> None:
 
         if job["fit_score"] >= MIN_FIT_SCORE:
             job["status"] = "shortlisted"
+            job.setdefault("shortlisted_at", datetime.now(timezone.utc).isoformat())
         else:
             job["status"] = "filtered_out"
             print(f"[scoring] Filtered out (score {job['fit_score']})")

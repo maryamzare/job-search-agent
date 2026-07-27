@@ -83,3 +83,28 @@ pending ──(quota resets, live re-run succeeds)──> completed
 2. **Claude Code's own scheduler** (the `schedule` skill / `CronCreate` tool) — schedules a cloud-run invocation instead of relying on a local crontab surviving until the reset time. This is the more "automatic" option but sets up real recurring/scheduled infrastructure, so it's something to set up deliberately with the user rather than something a coding assistant should create silently on the user's behalf.
 
 Either way, the underlying check is the same idempotent command — the scheduling mechanism is just what calls it.
+
+### Pipeline timing instrumentation
+
+**Why this was added.** The pipeline had no way to answer "where is time actually being lost?" — only anecdote. CLAUDE.md's own session notes recorded a concrete instance: two 88-scoring Uber jobs were lost to what the notes call "shortlist-sitting" — they cleared the fit-score bar but sat un-applied-to until the postings closed. The stated rule ("80+ scores get applications within 48h") existed as a policy with no instrumentation checking whether it was actually being followed.
+
+**Design — three timestamps, set at the exact point each transition already happens in the code:**
+
+| Field | Set in | When |
+|---|---|---|
+| `shortlisted_at` | `module2_scoring.score_all_discovered()` | The moment a job's fit score first clears `MIN_FIT_SCORE` |
+| `application_submitted_at` | `module5_apply.apply_to_shortlisted()` | The moment the human confirms they submitted the application |
+| `closed_or_expired_at` | `module6_tracker.update_status()` | The moment a job's status is set to `closed` |
+
+All three are additive (`job.setdefault(...)` or plain assignment alongside the existing status/date fields already being set there) — no existing field is renamed, removed, or repurposed. `applied_date` (a bare date, pre-existing) and `last_updated` are untouched; `application_submitted_at` is a new, separate, full-timestamp field alongside `applied_date`, not a replacement for it.
+
+**The graceful-degradation decision.** These timestamps only exist going forward from when this instrumentation shipped — none of the 294 jobs already in `data/job_queue.json` were shortlisted or applied to *with a timestamp recorded*, and there's no way to reconstruct one without fabricating data. Rather than wait for new data to accumulate before this becomes useful, `modules/lifecycle_metrics.compute_metrics()` splits its metrics into two kinds:
+
+- **Timestamp-dependent** (average/median shortlist-to-apply hours, "applied late"): require both `shortlisted_at` and `application_submitted_at` to be present and parseable. Zero historical jobs have these, so these read as "no data yet" today — expected, not a bug — and will populate as jobs move through the pipeline from here on.
+- **Status-dependent** (never-applied, closed-before-application, "still pending and delayed"): computed from `status` and `fit_score` alone, which every job already has. These are meaningful *immediately*, including against the existing 294-job queue — running the report today already surfaces the exact real incidents that motivated this work (the two Uber jobs, plus an 88-score Apple EPM role, all closed before ever being applied to).
+
+**What decisions this enables.** The report's "high-score jobs delayed" and "closed before application" sections turn "we lost some good jobs to slowness" from an anecdote into a specific, named, sorted-by-score list — the actionable answer to "which job should I apply to right now" and "which pattern of loss should I fix in the process." Over time, the average/median duration numbers answer whether the 48-hour rule is actually being met, not just stated.
+
+**Report.** `pipeline_timing_report.py` writes a markdown report to `outputs/reports/` (gitignored, like the rest of `outputs/`) and prints the same content to stdout. `modules/lifecycle_metrics.generate_report()` is a pure function over `compute_metrics()`'s output, so the report content is independently testable from the file-writing/CLI concerns.
+
+**Verification.** `tests/test_lifecycle_metrics.py` (35 tests) covers: timestamp math including fractional hours, `Z`-suffixed and naive (no-timezone) timestamps, and malformed/missing values (never raises, always returns `None`); average/median over known values including the even-count case; every status-dependent metric independent of timestamp presence (proving the graceful-degradation design actually degrades gracefully); the priority/sorting behavior (results ordered by fit score, highest first); and missing-data scenarios (empty job list, a job missing every field, a mixed batch of complete and incomplete jobs). Each of the three write points (`module2_scoring`, `module5_apply`, `module6_tracker`) was also verified directly against an isolated temp queue file, confirming the actual instrumentation — not just the metrics math — works end-to-end.

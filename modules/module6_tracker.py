@@ -5,7 +5,7 @@ Statuses: discovered → shortlisted → board_approved | filtered_out → appli
 → in_progress | interviewing → questionnaire_submitted → offer | closed | rejected
 """
 
-from datetime import date
+from datetime import date, datetime, timezone
 from config import JOB_QUEUE_PATH
 from modules.util import load_queue as _load_queue, save_queue as _save_queue
 
@@ -84,6 +84,8 @@ def update_status(company: str, title: str, new_status: str, notes: str = "") ->
         if job.get("company", "").lower() == company.lower() and job.get("title", "").lower() == title.lower():
             job["status"] = new_status
             job["last_updated"] = str(date.today())
+            if new_status == "closed":
+                job.setdefault("closed_or_expired_at", datetime.now(timezone.utc).isoformat())
             if notes:
                 job.setdefault("notes", []).append(f"{date.today()}: {notes}")
             save_queue(queue)
