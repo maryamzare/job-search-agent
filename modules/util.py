@@ -14,14 +14,24 @@ to data/llm_usage_log.jsonl for every call, so the pipeline's real
 performance/cost profile can be measured instead of guessed.
 """
 
+import asyncio
 import json
 import os
 import re
 import time
+from datetime import date
 
 import anthropic
 
 from config import LLM_USAGE_LOG_PATH
+
+# HTTP status codes worth retrying: transient server-side failures where a
+# second attempt has a real chance of succeeding. Deliberately excludes 429
+# (rate limit) even though it's commonly retried elsewhere - if this proves
+# too conservative in practice (a legitimate per-minute rate limit fails
+# immediately instead of backing off), add 429 back in as a follow-up; see
+# ARCHITECTURE.md for the reasoning.
+TRANSIENT_HTTP_STATUS_CODES = {500, 502, 503, 504}
 
 # $ per 1M tokens. Source: Anthropic pricing as of this writing. Update if
 # CLAUDE_MODEL changes or Anthropic revises pricing.
@@ -42,6 +52,58 @@ def get_client(api_key: str) -> anthropic.Anthropic:
 
 def get_async_client(api_key: str) -> anthropic.AsyncAnthropic:
     return anthropic.AsyncAnthropic(api_key=api_key)
+
+
+def is_transient_error(exc: Exception) -> bool:
+    """True only for failures worth retrying: network-level connection
+    failures/timeouts, and 500/502/503/504 server errors.
+
+    False for everything else, notably: quota-exceeded, authentication
+    failures, and invalid requests - these are all non-retryable 4xx
+    responses that will never succeed no matter how many times or how
+    long you wait to retry, so retrying them only burns time. This was a
+    real bug: a quota-exceeded response (HTTP 400, Anthropic's
+    invalid_request_error type) was retried 5 times with exponential
+    backoff before eventually failing anyway.
+    """
+    # anthropic.APITimeoutError is a subclass of APIConnectionError, so this
+    # one check covers both network errors and timeouts.
+    if isinstance(exc, anthropic.APIConnectionError):
+        return True
+    if isinstance(exc, anthropic.APIStatusError):
+        return exc.status_code in TRANSIENT_HTTP_STATUS_CODES
+    return False
+
+
+async def with_retry(coro_fn, retries: int = 3, base_delay: float = 2.0):
+    """Retry an async callable, but only for transient failures (see
+    is_transient_error). A non-transient error (quota exceeded, auth
+    failure, invalid request, any other 4xx) is raised immediately on the
+    first attempt - no retry, no backoff delay.
+    """
+    for attempt in range(retries):
+        try:
+            return await coro_fn()
+        except Exception as e:
+            if not is_transient_error(e):
+                raise
+            if attempt == retries - 1:
+                raise
+            delay = base_delay * (2 ** attempt)
+            print(f"    [retry] {type(e).__name__} — retrying in {delay:.0f}s ({attempt + 1}/{retries})")
+            await asyncio.sleep(delay)
+
+
+def current_date_context() -> str:
+    """A one-line date-grounding string for prompts that reason about dates.
+
+    Without this, a reviewer has no way to know "today" and can mistake a
+    real past date for a future one (e.g. flagging a resume's real end date
+    of April 2026 as suspiciously future-dated when today is actually
+    July 2026) - this was found causing false "major-flags" verdicts on
+    ~95% of resume-board reviews.
+    """
+    return f"Today's date is {date.today().isoformat()}."
 
 
 def _estimate_cost_usd(model: str, usage) -> float | None:

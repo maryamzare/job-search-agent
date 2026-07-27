@@ -7,7 +7,7 @@ All four reviewers run in parallel via AsyncAnthropic.
 import asyncio
 import json
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, JOB_QUEUE_PATH, MASTER_RESUME_PATH
-from modules.util import load_queue, save_queue, parse_llm_json, get_async_client, tracked_create_async
+from modules.util import load_queue, save_queue, parse_llm_json, get_async_client, tracked_create_async, current_date_context
 
 async_client = get_async_client(ANTHROPIC_API_KEY)
 
@@ -53,7 +53,7 @@ async def _call_reviewer(role: str, system_prompt: str, content: str) -> tuple[s
 
 
 async def run_advisory_board(job: dict, resume: str) -> dict:
-    content = f"JOB:\n{json.dumps(job, indent=2)}\n\nRESUME:\n{resume}"
+    content = f"{current_date_context()}\n\nJOB:\n{json.dumps(job, indent=2)}\n\nRESUME:\n{resume}"
 
     # All four reviewers run in parallel
     results = await asyncio.gather(

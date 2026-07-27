@@ -7,11 +7,10 @@ If the resume isn't ready to submit, triggers a rewrite pass automatically.
 import asyncio
 import json
 import os
-from anthropic import APIConnectionError, APIStatusError
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, JOB_QUEUE_PATH, RESUME_OUTPUT_DIR
 from modules.util import (
     slugify as _slugify, load_queue, save_queue, parse_llm_json as _parse_json,
-    get_async_client, tracked_create_async,
+    get_async_client, tracked_create_async, current_date_context, with_retry,
 )
 
 async_client = get_async_client(ANTHROPIC_API_KEY)
@@ -125,18 +124,6 @@ Original resume:
 {resume}"""
 
 
-async def _with_retry(coro_fn, retries: int = 3, base_delay: float = 2.0):
-    for attempt in range(retries):
-        try:
-            return await coro_fn()
-        except (APIConnectionError, APIStatusError) as e:
-            if attempt == retries - 1:
-                raise
-            delay = base_delay * (2 ** attempt)
-            print(f"    [retry] {type(e).__name__} — retrying in {delay:.0f}s ({attempt+1}/{retries})")
-            await asyncio.sleep(delay)
-
-
 async def _call_reviewer(role: str, system_prompt: str, content: str) -> tuple:
     async def _call():
         response = await tracked_create_async(
@@ -147,7 +134,7 @@ async def _call_reviewer(role: str, system_prompt: str, content: str) -> tuple:
             messages=[{"role": "user", "content": content}],
         )
         return role, _parse_json(response.content[0].text)
-    return await _with_retry(_call)
+    return await with_retry(_call)
 
 
 async def rewrite_resume(draft_resume: str, scorecard: dict) -> str:
@@ -165,12 +152,12 @@ async def rewrite_resume(draft_resume: str, scorecard: dict) -> str:
             max_tokens=MAX_TOKENS,
             messages=[{"role": "user", "content": prompt}],
         )
-    response = await _with_retry(_rewrite_call)
+    response = await with_retry(_rewrite_call)
     return response.content[0].text.strip()
 
 
 async def review_resume(draft_resume: str, job: dict) -> dict:
-    context = f"JOB POSTING:\n{job.get('description', job.get('title', ''))[:2000]}\n\nRESUME:\n{draft_resume}"
+    context = f"{current_date_context()}\n\nJOB POSTING:\n{job.get('description', job.get('title', ''))[:2000]}\n\nRESUME:\n{draft_resume}"
 
     # 5 reviewers in parallel
     results = await asyncio.gather(
@@ -190,7 +177,7 @@ async def review_resume(draft_resume: str, job: dict) -> dict:
                 "content": f"{context}\n\nREVIEWER FEEDBACK:\n{json.dumps(reviews, indent=2)}",
             }],
         )
-    editor_response = await _with_retry(_editor_call)
+    editor_response = await with_retry(_editor_call)
     scorecard = _parse_json(editor_response.content[0].text)
 
     final_resume = draft_resume
