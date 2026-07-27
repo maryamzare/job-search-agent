@@ -45,3 +45,33 @@ Reviewer prompts that reason qualitatively about a resume (red flags, career-arc
 **Deliberate omission — HTTP 429 (rate limit).** 429 is commonly treated as retryable elsewhere (Anthropic's own SDK auto-retries it by default), but it is intentionally left out of `TRANSIENT_HTTP_STATUS_CODES` here. This is a judgment call, not an oversight: the policy was written to close a specific, verified production incident (a 400 quota-exceeded error retried needlessly), and extending it to also cover 429 would broaden the change beyond what's been observed and tested. If a real 429 is ever seen failing a call that a short backoff would have recovered, add `429` to `TRANSIENT_HTTP_STATUS_CODES` in `modules/util.py` — the mechanism already supports it; it's a one-line change.
 
 **Verification.** `tests/test_retry.py` proves: the predicate correctly classifies every status code discussed above (transient vs. not); a transient error retries and can succeed within the retry budget; a transient error that never succeeds exhausts its retries and raises; backoff delay doubles on each attempt; and a non-transient error fails on the very first attempt with zero retries and zero backoff sleep.
+
+### Evaluation recovery workflow
+
+**Problem.** Verifying a prompt/behavior fix honestly requires a real live API call — comparing stored "before" data against a fresh "after" result. But a live call can be blocked by something no amount of in-process retrying fixes: an account-level usage quota that resets at a specific future timestamp (hours to days away), reported by Anthropic as free text in the error message rather than a `retry-after` header. This is a fundamentally different failure mode than the transient errors `with_retry` handles — those resolve in seconds, this one doesn't resolve until a known wall-clock time in the future, so it needs *persistence* (remember what we were trying to do and what "before" looked like) and *scheduling* (try again after that time), not a tighter retry loop.
+
+**Design — `modules/eval_recovery.py` + `evaluation_recovery.py` (CLI).** A small state machine persisted to `data/eval_recovery_state.json` (gitignored, like the rest of `data/`):
+
+```
+pending ──(quota resets, live re-run succeeds)──> completed
+   │
+   └──(quota resets, live re-run hits a different, unexpected error)──> failed
+```
+
+- `save_failed_eval_state(target, before, error)` — called when a live evaluation attempt fails. Parses the reset timestamp out of the error message via regex (`regain access on (\d{4}-\d{2}-\d{2}) at (\d{2}:\d{2}) UTC`) and persists it alongside `target` (what to re-check) and `before` (the snapshot to compare against). Returns `None` for the reset time rather than guessing if the message doesn't match this exact format — an unparsed reset time means `run_recovery_check` will attempt on every invocation instead of waiting, which is safe (worst case: an extra no-op API call attempt) but not silent.
+- `run_recovery_check(...)` — the idempotent check-and-run entrypoint, meant to be invoked repeatedly (see Scheduling below). Before the reset time: no-op, prints time remaining, **never calls the live re-run function** (verified by test — this matters because calling it early would just waste another quota-exceeded attempt). After the reset time: calls the injected `live_rerun_fn`, and on success writes a before/after markdown report to `outputs/eval_reports/` and marks state `completed`. If the live call fails again with a *new* parseable quota message (e.g., a different job later hit its own limit), the reset time is updated and state stays `pending` — this is not treated as failure. If it fails with anything else (auth error, code bug, network issue that outlasts the scheduling interval), state moves to `failed` and the CLI exits non-zero, so a scheduler's failure notification actually means something.
+- `generate_comparison_report(target, before, after)` — a plain markdown table, one row per metric key present in either snapshot, with changed values flagged inline. Deliberately dumb/generic (no hardcoded metric names) so it works for whatever fields a future `before`/`after` snapshot happens to contain.
+- The live re-run function itself (`_live_rerun` in `evaluation_recovery.py`) is injected into `run_recovery_check` rather than imported directly, specifically so the state machine is unit-testable without any real API access — `tests/test_eval_recovery.py` exercises every branch (not-ready, succeeds, still-blocked, unexpected-failure, already-completed, already-failed) with a fake `live_rerun_fn`.
+
+**Scheduling instructions.** `check-and-run` is safe to invoke on a fixed interval — cheap when there's nothing to do (one JSON read, no network call), and self-terminating once `completed`. Two options:
+
+1. **Cron (portable, no dependency on this session or Claude Code running):**
+   ```cron
+   # Check hourly whether the quota has reset and re-run the pending evaluation
+   0 * * * * cd /Users/marmar/job-search-agent && /usr/bin/python3 evaluation_recovery.py check-and-run >> /tmp/eval_recovery.log 2>&1
+   ```
+   Add with `crontab -e`. Logs to `/tmp/eval_recovery.log`; check `python3 evaluation_recovery.py status` any time for the current state without waiting for the next cron tick.
+
+2. **Claude Code's own scheduler** (the `schedule` skill / `CronCreate` tool) — schedules a cloud-run invocation instead of relying on a local crontab surviving until the reset time. This is the more "automatic" option but sets up real recurring/scheduled infrastructure, so it's something to set up deliberately with the user rather than something a coding assistant should create silently on the user's behalf.
+
+Either way, the underlying check is the same idempotent command — the scheduling mechanism is just what calls it.

@@ -200,15 +200,23 @@ def parse_llm_json(text: str) -> dict:
         return {"parse_error": text[:200]}
 
 
-def load_queue(path: str) -> dict:
+def load_json(path: str) -> dict:
     with open(path) as f:
         return json.load(f)
 
 
-def save_queue(queue: dict, path: str) -> None:
-    """Write the queue atomically (temp file + rename) so a crash mid-write
-    can't truncate/corrupt the on-disk queue."""
+def save_json(data: dict, path: str) -> None:
+    """Write atomically (temp file + rename) so a crash mid-write can't
+    truncate/corrupt the file on disk."""
     tmp_path = f"{path}.tmp"
     with open(tmp_path, "w") as f:
-        json.dump(queue, f, indent=2)
+        json.dump(data, f, indent=2)
     os.replace(tmp_path, path)
+
+
+def load_queue(path: str) -> dict:
+    return load_json(path)
+
+
+def save_queue(queue: dict, path: str) -> None:
+    save_json(queue, path)

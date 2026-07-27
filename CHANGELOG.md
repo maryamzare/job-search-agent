@@ -16,10 +16,11 @@ All notable changes to this project are documented here.
 
 ### Added
 
-- `modules/util.py`: shared slugify / JSON-parsing / queue-I/O / retry / date-context helpers, replacing ~9 duplicated implementations across the codebase.
+- **Evaluation recovery workflow** (`modules/eval_recovery.py`, `evaluation_recovery.py`): when a live evaluation re-run fails because the Anthropic account is over its usage quota, this now persists the failed attempt (target, "before" snapshot, and the reset time parsed straight out of Anthropic's error message) to `data/eval_recovery_state.json`, and `python3 evaluation_recovery.py check-and-run` — safe to call on a schedule (cron or otherwise) — automatically re-runs the evaluation once the quota resets and writes a before/after comparison report to `outputs/eval_reports/`. See `ARCHITECTURE.md` → Evaluation Recovery Workflow for the state machine and scheduling instructions. Seeded with the real state for the currently-blocked date-grounding-fix verification (reset time 2026-08-01).
+- `modules/util.py`: shared slugify / JSON-parsing / queue-I/O / retry / date-context helpers, replacing ~9 duplicated implementations across the codebase. `load_queue`/`save_queue` are now thin wrappers over generic `load_json`/`save_json`, so other state (like the recovery workflow's) gets the same atomic-write guarantee for free.
 - `job_queue.json` is now written atomically (temp file + rename) and saved incrementally during batch operations, so a crash mid-run loses at most one in-flight item instead of the whole batch.
 - `tracked_create` / `tracked_create_async`: every Claude API call now logs latency, token usage, and estimated cost to `data/llm_usage_log.jsonl`; `usage_report.py` summarizes it per call type.
-- `tests/test_retry.py`: first automated tests in this project.
+- `tests/test_retry.py`, `tests/test_eval_recovery.py`: first automated tests in this project (30 tests total).
 - `CHANGELOG.md`, `ARCHITECTURE.md` (this file and its companion).
 
 ### Removed
