@@ -108,6 +108,12 @@ problem it solves, the design chosen, and why — including the retry policy, th
 evaluation recovery workflow, date-grounding for reviewers, and pipeline lifecycle
 instrumentation. `CHANGELOG.md` tracks what changed and why, in the order it happened.
 
+**[docs/EVALUATION_REPORT.md](docs/EVALUATION_REPORT.md)** is a structured evaluation of
+this agent's real output and architecture: before/after reliability metrics, an
+architecture review (prompt strategy, tool usage, failure handling, data flow), the
+engineering decisions behind each major fix (problem → decision → tradeoff → result),
+current limitations, and the roadmap ahead.
+
 ## Tech stack
 
 Python · Claude API (`claude-sonnet-4-6`) · requests / BeautifulSoup for scraping ·
