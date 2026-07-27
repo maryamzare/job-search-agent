@@ -22,7 +22,7 @@ CANDIDATE_PROFILE = """
 Name: Marmar
 Title: Senior TPM
 Experience: 8+ years
-Education: B.S. CS/SWE (UW), M.S. AI Management (Georgetown, 2026)
+Education: B.S. CS/SWE (UW), M.S. AI Management (Georgetown, 2027)
 Certifications: PMP, SAFe, CSM
 Target roles: Senior TPM, AI Product Manager, Engineering Manager
 Industries: AI/ML, healthtech, data platforms, enterprise SaaS

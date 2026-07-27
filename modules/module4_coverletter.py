@@ -23,7 +23,7 @@ Rules:
 
 CANDIDATE_CONTEXT = """
 Candidate: Marmar
-Background: Senior TPM, 8+ years. B.S. CS/SWE (UW), M.S. AI Management (Georgetown, 2026).
+Background: Senior TPM, 8+ years. B.S. CS/SWE (UW), M.S. AI Management (Georgetown, 2027).
 Certified: PMP, SAFe, CSM.
 Specializes in: AI/ML programs, healthtech, data platforms, enterprise SaaS.
 Located in Seattle, WA.
