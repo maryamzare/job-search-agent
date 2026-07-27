@@ -11,16 +11,26 @@ from config import JOB_QUEUE_PATH, RESUME_OUTPUT_DIR, COVERLETTER_OUTPUT_DIR
 from modules.util import slugify, load_queue, save_queue
 
 
+def _resume_path_for(job: dict) -> Path:
+    """Prefer the board-reviewed v2 resume over the pre-review v1 draft."""
+    v2 = job.get("resume_v2_path")
+    if v2 and Path(v2).exists():
+        return Path(v2)
+    slug = slugify(f"{job.get('company', 'company')}_{job.get('title', 'role')}")
+    return Path(RESUME_OUTPUT_DIR) / f"{slug}.txt"
+
+
 def print_application_materials(job: dict) -> None:
     slug = slugify(f"{job.get('company', 'company')}_{job.get('title', 'role')}")
-    resume_path = Path(RESUME_OUTPUT_DIR) / f"{slug}.txt"
+    resume_path = _resume_path_for(job)
     cl_path = Path(COVERLETTER_OUTPUT_DIR) / f"{slug}.txt"
 
     print("\n" + "=" * 60)
     print(f"  {job.get('title')}")
     print(f"  {job.get('company')}  |  Score: {job.get('fit_score')}/100")
     print("=" * 60)
-    print(f"\n  RESUME:       {resume_path}")
+    resume_label = " (board-reviewed)" if job.get("resume_v2_path") == str(resume_path) else ""
+    print(f"\n  RESUME:       {resume_path}{resume_label}")
     print(f"  COVER LETTER: {cl_path}")
     print(f"  APPLY URL:    {job.get('apply_url') or job.get('url', 'unknown')}")
     print()
