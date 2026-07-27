@@ -4,14 +4,13 @@ Uses Claude to score each discovered job against Marmar's profile.
 Filters out jobs below MIN_FIT_SCORE.
 """
 
-import anthropic
 from config import (
     ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MIN_FIT_SCORE,
     JOB_QUEUE_PATH, MASTER_RESUME_PATH, CANDIDATE_PROFILE,
 )
-from modules.util import load_queue, save_queue, parse_llm_json
+from modules.util import load_queue, save_queue, parse_llm_json, get_client
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+client = get_client(ANTHROPIC_API_KEY)
 
 SYSTEM_PROMPT = """You are a job-fit analyst. Score the candidate profile against the job \
 description and return JSON:

@@ -6,11 +6,10 @@ All four reviewers run in parallel via AsyncAnthropic.
 
 import asyncio
 import json
-import anthropic
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, JOB_QUEUE_PATH, MASTER_RESUME_PATH
-from modules.util import load_queue, save_queue, parse_llm_json
+from modules.util import load_queue, save_queue, parse_llm_json, get_async_client
 
-async_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+async_client = get_async_client(ANTHROPIC_API_KEY)
 
 BOARD = {
     "fit_reviewer": """You are evaluating job-resume fit.

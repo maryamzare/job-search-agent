@@ -5,11 +5,10 @@ Saves result to outputs/tailored_resumes/<slug>.txt
 """
 
 import os
-import anthropic
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MASTER_RESUME_PATH, RESUME_OUTPUT_DIR
-from modules.util import slugify, load_queue
+from modules.util import slugify, load_queue, get_client
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+client = get_client(ANTHROPIC_API_KEY)
 
 SYSTEM_PROMPT = """You are an expert resume writer specializing in TPM, AI Product, and Engineering Manager roles.
 Rewrite the candidate's resume to best match the job description provided.

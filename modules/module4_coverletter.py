@@ -5,14 +5,13 @@ Saves result to outputs/cover_letters/<slug>.txt
 """
 
 import os
-import anthropic
 from config import (
     ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MASTER_RESUME_PATH,
     COVERLETTER_OUTPUT_DIR, CANDIDATE_PROFILE,
 )
-from modules.util import slugify, load_queue
+from modules.util import slugify, load_queue, get_client
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+client = get_client(ANTHROPIC_API_KEY)
 
 SYSTEM_PROMPT = """You are an expert cover letter writer for senior tech roles.
 Write a compelling, concise 3-4 paragraph cover letter (~300 words). Rules:

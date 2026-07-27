@@ -7,13 +7,14 @@ If the resume isn't ready to submit, triggers a rewrite pass automatically.
 import asyncio
 import json
 import os
-import anthropic
 from anthropic import APIConnectionError, APIStatusError
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, JOB_QUEUE_PATH, RESUME_OUTPUT_DIR
-from modules.util import slugify as _slugify, load_queue, save_queue, parse_llm_json as _parse_json
+from modules.util import (
+    slugify as _slugify, load_queue, save_queue, parse_llm_json as _parse_json,
+    get_async_client,
+)
 
-async_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
-sync_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+async_client = get_async_client(ANTHROPIC_API_KEY)
 
 RESUME_BOARD = {
     "ats_checker": """You are an ATS (Applicant Tracking System) specialist.

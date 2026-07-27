@@ -13,6 +13,16 @@ import json
 import os
 import re
 
+import anthropic
+
+
+def get_client(api_key: str) -> anthropic.Anthropic:
+    return anthropic.Anthropic(api_key=api_key)
+
+
+def get_async_client(api_key: str) -> anthropic.AsyncAnthropic:
+    return anthropic.AsyncAnthropic(api_key=api_key)
+
 
 def slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
