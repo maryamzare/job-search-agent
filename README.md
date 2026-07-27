@@ -55,7 +55,7 @@ python main.py --help
 
 ## Tech stack
 
-Python · Claude API (`claude-sonnet-4-6`) · BeautifulSoup / Playwright for scraping ·
+Python · Claude API (`claude-sonnet-4-6`) · requests / BeautifulSoup for scraping ·
 JSON state store
 
 ---

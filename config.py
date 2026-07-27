@@ -2,9 +2,6 @@ import os
 
 # --- API Keys ---
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-SERP_API_KEY = os.getenv("SERP_API_KEY", "")          # for job search scraping
-LINKEDIN_EMAIL = os.getenv("LINKEDIN_EMAIL", "")
-LINKEDIN_PASSWORD = os.getenv("LINKEDIN_PASSWORD", "")
 
 # --- Model ---
 CLAUDE_MODEL = "claude-sonnet-4-6"
