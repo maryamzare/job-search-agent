@@ -4,9 +4,13 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Retry policy now distinguishes rate limiting from quota exhaustion.** The first fix for the retry-everything bug (below) deliberately excluded HTTP 429 from the retryable set entirely, to keep that fix minimal. On review, that conflated two failure modes that need opposite handling: a 429 rate limit clears in seconds to minutes and should be retried; account-level quota exhaustion clears at a specific future date and retrying it is pointless. `modules/util.py` now exposes `classify_error()` with four categories — `rate_limited` (retry with backoff, honoring a `Retry-After` header when present), `quota_exceeded` (fail fast, clear notification, never retried), `transient` (network/timeout/5xx, retry with backoff), `non_retryable` (auth/permission/invalid-request/not-found, fail fast) — with quota-exhaustion message content checked before status code, so a quota cap reported via an unexpected status still classifies correctly. See `ARCHITECTURE.md` → Retry Policy for the full design, including why `with_retry` doesn't call `modules/eval_recovery.py` directly.
+
 ### Fixed
 
-- **Retry logic no longer retries non-retryable errors.** `module3b_resume_board`'s retry wrapper previously caught the broad `anthropic.APIStatusError` base class, so a real quota-exceeded response (HTTP 400) was retried 5 times with exponential backoff before failing anyway — wasted time on a failure that retrying can never fix. The retry predicate is now a strict allowlist (network errors, timeouts, HTTP 500/502/503/504 only); quota-exceeded, authentication failures, and other 4xx errors now fail on the first attempt with no delay. See `ARCHITECTURE.md` → Retry Policy for the full reasoning, including why HTTP 429 is deliberately left out of the retryable set for now.
+- **Retry logic no longer retries non-retryable errors.** `module3b_resume_board`'s retry wrapper previously caught the broad `anthropic.APIStatusError` base class, so a real quota-exceeded response (HTTP 400) was retried 5 times with exponential backoff before failing anyway — wasted time on a failure that retrying can never fix. Quota-exceeded, authentication failures, and other genuinely non-retryable 4xx errors now fail on the first attempt with no delay (see the retry-policy entry above for how rate limits and quota exhaustion are now told apart).
 - Board-review reviewers (module2b, module3b) are now grounded in the real current date, fixing a false "future end date" flag that was triggering unnecessary resume rewrites on ~95% of reviewed resumes.
 - Board decision (apply/defer/skip) now actually changes a job's status; previously the advisory board computed a verdict the rest of the pipeline ignored.
 - Apply step now prefers the board-reviewed resume (`resume_v2_path`) over the pre-review draft.
@@ -20,7 +24,7 @@ All notable changes to this project are documented here.
 - `modules/util.py`: shared slugify / JSON-parsing / queue-I/O / retry / date-context helpers, replacing ~9 duplicated implementations across the codebase. `load_queue`/`save_queue` are now thin wrappers over generic `load_json`/`save_json`, so other state (like the recovery workflow's) gets the same atomic-write guarantee for free.
 - `job_queue.json` is now written atomically (temp file + rename) and saved incrementally during batch operations, so a crash mid-run loses at most one in-flight item instead of the whole batch.
 - `tracked_create` / `tracked_create_async`: every Claude API call now logs latency, token usage, and estimated cost to `data/llm_usage_log.jsonl`; `usage_report.py` summarizes it per call type.
-- `tests/test_retry.py`, `tests/test_eval_recovery.py`: first automated tests in this project (30 tests total).
+- `tests/test_retry.py`, `tests/test_eval_recovery.py`: first automated tests in this project (44 tests total).
 - `CHANGELOG.md`, `ARCHITECTURE.md` (this file and its companion).
 
 ### Removed
