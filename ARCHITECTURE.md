@@ -68,9 +68,9 @@ pending ──(quota resets, live re-run succeeds)──> completed
 1. **Cron (portable, no dependency on this session or Claude Code running):**
    ```cron
    # Check hourly whether the quota has reset and re-run the pending evaluation
-   0 * * * * cd /Users/marmar/job-search-agent && /usr/bin/python3 evaluation_recovery.py check-and-run >> /tmp/eval_recovery.log 2>&1
+   0 * * * * cd /path/to/job-search-agent && /usr/bin/python3 evaluation_recovery.py check-and-run >> /tmp/eval_recovery.log 2>&1
    ```
-   Add with `crontab -e`. Logs to `/tmp/eval_recovery.log`; check `python3 evaluation_recovery.py status` any time for the current state without waiting for the next cron tick.
+   Add with `crontab -e`, replacing `/path/to/job-search-agent` with this repo's actual location. Logs to `/tmp/eval_recovery.log`; check `python3 evaluation_recovery.py status` any time for the current state without waiting for the next cron tick.
 
 2. **Claude Code's own scheduler** (the `schedule` skill / `CronCreate` tool) — schedules a cloud-run invocation instead of relying on a local crontab surviving until the reset time. This is the more "automatic" option but sets up real recurring/scheduled infrastructure, so it's something to set up deliberately with the user rather than something a coding assistant should create silently on the user's behalf.
 
