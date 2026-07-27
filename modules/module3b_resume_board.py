@@ -11,7 +11,7 @@ from anthropic import APIConnectionError, APIStatusError
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, JOB_QUEUE_PATH, RESUME_OUTPUT_DIR
 from modules.util import (
     slugify as _slugify, load_queue, save_queue, parse_llm_json as _parse_json,
-    get_async_client,
+    get_async_client, tracked_create_async,
 )
 
 async_client = get_async_client(ANTHROPIC_API_KEY)
@@ -139,7 +139,8 @@ async def _with_retry(coro_fn, retries: int = 3, base_delay: float = 2.0):
 
 async def _call_reviewer(role: str, system_prompt: str, content: str) -> tuple:
     async def _call():
-        response = await async_client.messages.create(
+        response = await tracked_create_async(
+            async_client, f"resume_board:{role}",
             model=CLAUDE_MODEL,
             max_tokens=MAX_TOKENS,
             system=system_prompt,
@@ -158,7 +159,8 @@ async def rewrite_resume(draft_resume: str, scorecard: dict) -> str:
         resume=draft_resume,
     )
     async def _rewrite_call():
-        return await async_client.messages.create(
+        return await tracked_create_async(
+            async_client, "resume_board:rewrite",
             model=CLAUDE_MODEL,
             max_tokens=MAX_TOKENS,
             messages=[{"role": "user", "content": prompt}],
@@ -178,7 +180,8 @@ async def review_resume(draft_resume: str, job: dict) -> dict:
 
     # Chief Editor pass
     async def _editor_call():
-        return await async_client.messages.create(
+        return await tracked_create_async(
+            async_client, "resume_board:chief_editor",
             model=CLAUDE_MODEL,
             max_tokens=MAX_TOKENS,
             system=CHIEF_EDITOR_PROMPT,

@@ -6,7 +6,7 @@ Saves result to outputs/tailored_resumes/<slug>.txt
 
 import os
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MASTER_RESUME_PATH, RESUME_OUTPUT_DIR
-from modules.util import slugify, load_queue, get_client
+from modules.util import slugify, load_queue, get_client, tracked_create
 
 client = get_client(ANTHROPIC_API_KEY)
 
@@ -45,7 +45,8 @@ Master resume:
 
 Rewrite the resume to best match this job."""
 
-    response = client.messages.create(
+    response = tracked_create(
+        client, "tailor_resume",
         model=CLAUDE_MODEL,
         max_tokens=MAX_TOKENS,
         system=SYSTEM_PROMPT,

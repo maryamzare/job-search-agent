@@ -7,7 +7,7 @@ All four reviewers run in parallel via AsyncAnthropic.
 import asyncio
 import json
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, JOB_QUEUE_PATH, MASTER_RESUME_PATH
-from modules.util import load_queue, save_queue, parse_llm_json, get_async_client
+from modules.util import load_queue, save_queue, parse_llm_json, get_async_client, tracked_create_async
 
 async_client = get_async_client(ANTHROPIC_API_KEY)
 
@@ -42,7 +42,8 @@ Return JSON: {{"composite_score": 0-10, "action": "apply|defer|skip",
 
 
 async def _call_reviewer(role: str, system_prompt: str, content: str) -> tuple[str, dict]:
-    response = await async_client.messages.create(
+    response = await tracked_create_async(
+        async_client, f"board_review:{role}",
         model=CLAUDE_MODEL,
         max_tokens=MAX_TOKENS,
         system=system_prompt,
@@ -61,7 +62,8 @@ async def run_advisory_board(job: dict, resume: str) -> dict:
     reviews = dict(results)
 
     # Chair synthesizes
-    chair_response = await async_client.messages.create(
+    chair_response = await tracked_create_async(
+        async_client, "board_review:chair",
         model=CLAUDE_MODEL,
         max_tokens=MAX_TOKENS,
         messages=[{
