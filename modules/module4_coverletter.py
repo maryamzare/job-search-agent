@@ -6,14 +6,16 @@ Saves result to outputs/cover_letters/<slug>.txt
 
 import os
 import anthropic
-from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MASTER_RESUME_PATH, COVERLETTER_OUTPUT_DIR
+from config import (
+    ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MASTER_RESUME_PATH,
+    COVERLETTER_OUTPUT_DIR, CANDIDATE_PROFILE,
+)
 from modules.util import slugify, load_queue
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 SYSTEM_PROMPT = """You are an expert cover letter writer for senior tech roles.
-Write a compelling, concise cover letter (3-4 paragraphs, ~300 words) for the candidate.
-Rules:
+Write a compelling, concise 3-4 paragraph cover letter (~300 words). Rules:
 - Open with a specific hook referencing the company/role — never "I am writing to apply..."
 - Paragraph 2: connect 2-3 of Marmar's strongest achievements to the role's core needs
 - Paragraph 3: demonstrate genuine interest in this company's specific work
@@ -21,21 +23,13 @@ Rules:
 - Voice: direct, confident, senior — not eager or generic
 - Do not repeat the resume; synthesize and contextualize"""
 
-CANDIDATE_CONTEXT = """
-Candidate: Marmar
-Background: Senior TPM, 8+ years. B.S. CS/SWE (UW), M.S. AI Management (Georgetown, 2027).
-Certified: PMP, SAFe, CSM.
-Specializes in: AI/ML programs, healthtech, data platforms, enterprise SaaS.
-Located in Seattle, WA.
-"""
-
 
 def generate_cover_letter(job: dict) -> str:
     with open(MASTER_RESUME_PATH) as f:
         resume = f.read()
 
-    prompt = f"""Candidate context:
-{CANDIDATE_CONTEXT}
+    prompt = f"""Candidate profile:
+{CANDIDATE_PROFILE}
 
 Resume highlights:
 {resume[:2000]}

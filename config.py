@@ -23,3 +23,16 @@ MASTER_RESUME_PATH = "data/master_resume.txt"
 JOB_QUEUE_PATH = "data/job_queue.json"
 RESUME_OUTPUT_DIR = "outputs/tailored_resumes"
 COVERLETTER_OUTPUT_DIR = "outputs/cover_letters"
+
+# --- Candidate Profile ---
+# Single source of truth for candidate facts sent to Claude. Previously
+# duplicated (with drifting wording) as CANDIDATE_PROFILE in
+# module2_scoring.py and CANDIDATE_CONTEXT in module4_coverletter.py.
+CANDIDATE_PROFILE = """Name: Marmar
+Title: Senior TPM
+Experience: 8+ years
+Education: B.S. CS/SWE (UW), M.S. AI Management (Georgetown, 2027)
+Certifications: PMP, SAFe, CSM
+Target roles: Senior TPM, AI Product Manager, Engineering Manager
+Industries: AI/ML, healthtech, data platforms, enterprise SaaS
+Location: Seattle, WA — hybrid or remote preferred"""

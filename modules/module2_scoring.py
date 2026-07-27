@@ -5,29 +5,21 @@ Filters out jobs below MIN_FIT_SCORE.
 """
 
 import anthropic
-from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MIN_FIT_SCORE, JOB_QUEUE_PATH, MASTER_RESUME_PATH
+from config import (
+    ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MIN_FIT_SCORE,
+    JOB_QUEUE_PATH, MASTER_RESUME_PATH, CANDIDATE_PROFILE,
+)
 from modules.util import load_queue, save_queue, parse_llm_json
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-SYSTEM_PROMPT = """You are a job-fit analyst. Given a candidate profile and a job description,
-return a JSON object with:
+SYSTEM_PROMPT = """You are a job-fit analyst. Score the candidate profile against the job \
+description and return JSON:
   - score: integer 0-100 representing fit
   - reasons: list of 3 brief strings explaining the score
   - gaps: list of up to 3 skill/experience gaps
 
-Respond ONLY with valid JSON. No explanation outside the JSON."""
-
-CANDIDATE_PROFILE = """
-Name: Marmar
-Title: Senior TPM
-Experience: 8+ years
-Education: B.S. CS/SWE (UW), M.S. AI Management (Georgetown, 2027)
-Certifications: PMP, SAFe, CSM
-Target roles: Senior TPM, AI Product Manager, Engineering Manager
-Industries: AI/ML, healthtech, data platforms, enterprise SaaS
-Location: Seattle WA — hybrid or remote preferred
-"""
+Respond ONLY with valid JSON — no explanation outside it."""
 
 
 def load_resume() -> str:
