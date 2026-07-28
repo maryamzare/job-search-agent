@@ -74,7 +74,7 @@ Unlike token counts, wall-clock latency isn't derivable from prompt text — it 
 
 - **`module3b_resume_board` is structurally the most expensive and highest-latency stage per job**: 5 parallel reviewers + a chief editor + (98% of the time) a rewrite pass = up to 8 sequential-dependency LLM calls for one job, per the cost table in § 1.
 - **`module2b_board_review`'s job-JSON-dump grows unboundedly with job history** (§ 3) — this is a bottleneck that gets *worse* over the life of a job record, not a fixed cost.
-- **No retry/backoff on the synchronous calls** (`module2_scoring`, `module3_resume`, `module4_coverletter`) — a transient network blip during any of these fails the whole item with no recovery, unlike `module3b_resume_board`'s async calls, which go through `modules.util.with_retry`. This was already flagged as a known limitation in `docs/EVALUATION_REPORT.md` § 5; it's restated here because it's also a *latency* bottleneck, not just a reliability one — a failed call with no retry means redoing the entire item from scratch on the next run.
+- ~~**No retry/backoff on the synchronous calls**~~ **Fixed.** `module2_scoring`, `module3_resume`, `module4_coverletter` previously had no recovery from a transient network blip, timeout, or 5xx — the whole item failed outright, unlike `module3b_resume_board`'s async calls, which already went through `modules.util.with_retry`. All three now go through the new `modules.util.with_retry_sync` (same `classify_error()`-based four-category policy, synchronous). This was flagged as a known limitation in `docs/EVALUATION_REPORT.md` § 5 and restated here because it was also a *latency* bottleneck, not just a reliability one — a failed call with no retry meant redoing the entire item from scratch on the next run. See `ARCHITECTURE.md` → Retry/backoff for the synchronous modules.
 - **Discovery (`module1_discovery`) makes sequential, unbatched HTTP requests** with fixed `time.sleep()` delays between LinkedIn pages — real wall-clock cost, but not something prompt caching touches at all (it's not an LLM call).
 
 ## 5. Optimization Opportunities
@@ -82,7 +82,7 @@ Unlike token counts, wall-clock latency isn't derivable from prompt text — it 
 - **Prompt caching** — see § 6 for the specific, structurally-informed plan (not a blanket "turn it on" — the fan-out reviewers need a different treatment than the sequential single-call stages).
 - ~~**Stop serializing the whole job dict in `module2b_board_review`.**~~ **Done.** Board reviewers now receive only the job's *posting* fields (title, company, location, url, description) — not `fit_reasons`, `fit_gaps`, or (on a re-run) prior board/resume-board results. See § 3 above for the measured before/after.
 - **Investigate whether the resume-board rewrite pass is over-triggering.** § 1 and § 3 both note it fires on 98% of resumes; `docs/EVALUATION_REPORT.md` traces most of that to the (now-fixed) date-grounding bug. Once real post-fix data exists, check whether the rewrite rate actually drops — if it does, this "bottleneck" shrinks on its own without further optimization work.
-- **Extend retry/backoff to the synchronous modules** (§ 4) — a reliability fix that also reduces wasted re-processing latency.
+- ~~**Extend retry/backoff to the synchronous modules**~~ **Done** (§ 4) — a reliability fix that also reduces wasted re-processing latency.
 
 ## 6. Prompt Caching: Implementation and Measured Status
 

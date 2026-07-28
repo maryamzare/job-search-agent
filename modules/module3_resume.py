@@ -6,7 +6,7 @@ Saves result to outputs/tailored_resumes/<slug>.txt
 
 import os
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MASTER_RESUME_PATH, RESUME_OUTPUT_DIR
-from modules.util import slugify, load_queue, get_client, tracked_create, track_stage
+from modules.util import slugify, load_queue, get_client, tracked_create, track_stage, with_retry_sync
 
 client = get_client(ANTHROPIC_API_KEY)
 
@@ -53,19 +53,22 @@ Description:
 
 Rewrite the resume to best match this job."""
 
-        response = tracked_create(
-            client, "tailor_resume",
-            model=CLAUDE_MODEL,
-            max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": stable_context, "cache_control": {"type": "ephemeral"}},
-                    {"type": "text", "text": job_context},
-                ],
-            }],
-        )
+        def _call():
+            return tracked_create(
+                client, "tailor_resume",
+                model=CLAUDE_MODEL,
+                max_tokens=MAX_TOKENS,
+                system=SYSTEM_PROMPT,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": stable_context, "cache_control": {"type": "ephemeral"}},
+                        {"type": "text", "text": job_context},
+                    ],
+                }],
+            )
+
+        response = with_retry_sync(_call)
 
         return response.content[0].text
 

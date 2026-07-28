@@ -9,7 +9,7 @@ from config import (
     ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MASTER_RESUME_PATH,
     COVERLETTER_OUTPUT_DIR, CANDIDATE_PROFILE,
 )
-from modules.util import slugify, load_queue, get_client, tracked_create, track_stage
+from modules.util import slugify, load_queue, get_client, tracked_create, track_stage, with_retry_sync
 
 client = get_client(ANTHROPIC_API_KEY)
 
@@ -47,19 +47,22 @@ Description:
 
 Write the cover letter."""
 
-        response = tracked_create(
-            client, "generate_cover_letter",
-            model=CLAUDE_MODEL,
-            max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": stable_context, "cache_control": {"type": "ephemeral"}},
-                    {"type": "text", "text": job_context},
-                ],
-            }],
-        )
+        def _call():
+            return tracked_create(
+                client, "generate_cover_letter",
+                model=CLAUDE_MODEL,
+                max_tokens=MAX_TOKENS,
+                system=SYSTEM_PROMPT,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": stable_context, "cache_control": {"type": "ephemeral"}},
+                        {"type": "text", "text": job_context},
+                    ],
+                }],
+            )
+
+        response = with_retry_sync(_call)
 
         return response.content[0].text
 

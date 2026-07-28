@@ -1,6 +1,8 @@
 """
 Tests for modules.util's retry policy: classify_error, is_transient_error,
-is_quota_exceeded_error, and with_retry.
+is_quota_exceeded_error, with_retry, and its synchronous counterpart
+with_retry_sync (used by module2_scoring, module3_resume, and
+module4_coverletter, which are built on the sync Anthropic client).
 
 Covers three separately-handled cases:
 
@@ -40,6 +42,7 @@ from modules.util import (
     is_quota_exceeded_error,
     is_transient_error,
     with_retry,
+    with_retry_sync,
 )
 
 _FAKE_REQUEST = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
@@ -363,6 +366,234 @@ class TestWithRetryNonRetryable(unittest.IsolatedAsyncioTestCase):
         with patch("modules.util.asyncio.sleep", new=fake_sleep):
             with self.assertRaises(anthropic.AuthenticationError):
                 await with_retry(always_auth_error, retries=5, base_delay=2.0)
+
+        self.assertEqual(slept, [], "non-retryable errors must never trigger a backoff sleep")
+
+
+class TestWithRetrySyncTransientAnd5xx(unittest.TestCase):
+    """with_retry_sync mirrors with_retry's transient/5xx behavior exactly -
+    see TestWithRetryTransientAnd5xx above - just synchronous."""
+
+    def test_transient_error_retries_then_succeeds(self):
+        attempts = []
+
+        def flaky():
+            attempts.append(1)
+            if len(attempts) < 3:
+                raise _status_error(anthropic.InternalServerError, 503)
+            return "success"
+
+        with patch("modules.util.time.sleep"):
+            result = with_retry_sync(flaky, retries=3, base_delay=0.01)
+
+        self.assertEqual(result, "success")
+        self.assertEqual(len(attempts), 3, "should have taken exactly 3 attempts to succeed")
+
+    def test_transient_error_exhausts_retries_and_raises(self):
+        attempts = []
+
+        def always_503():
+            attempts.append(1)
+            raise _status_error(anthropic.InternalServerError, 503)
+
+        with patch("modules.util.time.sleep"):
+            with self.assertRaises(anthropic.InternalServerError):
+                with_retry_sync(always_503, retries=3, base_delay=0.01)
+
+        self.assertEqual(len(attempts), 3, "should attempt exactly `retries` times before giving up")
+
+    def test_backoff_delay_doubles_each_retry(self):
+        delays = []
+
+        def fake_sleep(seconds):
+            delays.append(seconds)
+
+        def always_503():
+            raise _status_error(anthropic.InternalServerError, 503)
+
+        with patch("modules.util.time.sleep", new=fake_sleep):
+            with self.assertRaises(anthropic.InternalServerError):
+                with_retry_sync(always_503, retries=3, base_delay=2.0)
+
+        self.assertEqual(delays, [2.0, 4.0])
+
+
+class TestWithRetrySyncRateLimited(unittest.TestCase):
+    """HTTP 429 retries with exponential backoff, honoring Retry-After when
+    present - see TestWithRetryRateLimited above."""
+
+    def test_rate_limited_retries_then_succeeds(self):
+        attempts = []
+
+        def flaky():
+            attempts.append(1)
+            if len(attempts) < 3:
+                raise _status_error(anthropic.RateLimitError, 429, "slow down")
+            return "success"
+
+        with patch("modules.util.time.sleep"):
+            result = with_retry_sync(flaky, retries=3, base_delay=0.01)
+
+        self.assertEqual(result, "success")
+        self.assertEqual(len(attempts), 3)
+
+    def test_rate_limited_without_retry_after_header_uses_exponential_backoff(self):
+        delays = []
+
+        def fake_sleep(seconds):
+            delays.append(seconds)
+
+        def always_429():
+            raise _status_error(anthropic.RateLimitError, 429, "slow down")  # no retry-after header
+
+        with patch("modules.util.time.sleep", new=fake_sleep):
+            with self.assertRaises(anthropic.RateLimitError):
+                with_retry_sync(always_429, retries=3, base_delay=2.0)
+
+        self.assertEqual(delays, [2.0, 4.0])
+
+    def test_rate_limited_with_retry_after_header_honors_it_instead_of_backoff(self):
+        delays = []
+
+        def fake_sleep(seconds):
+            delays.append(seconds)
+
+        def always_429():
+            raise _status_error(anthropic.RateLimitError, 429, "slow down", headers={"retry-after": "15"})
+
+        with patch("modules.util.time.sleep", new=fake_sleep):
+            with self.assertRaises(anthropic.RateLimitError):
+                with_retry_sync(always_429, retries=3, base_delay=2.0)
+
+        self.assertEqual(delays, [15.0, 15.0])
+
+    def test_retry_after_value_is_capped_at_max_delay(self):
+        delays = []
+
+        def fake_sleep(seconds):
+            delays.append(seconds)
+
+        def always_429():
+            raise _status_error(anthropic.RateLimitError, 429, "slow down", headers={"retry-after": "99999"})
+
+        with patch("modules.util.time.sleep", new=fake_sleep):
+            with self.assertRaises(anthropic.RateLimitError):
+                with_retry_sync(always_429, retries=2, base_delay=2.0, max_delay=30.0)
+
+        self.assertEqual(delays, [30.0], "an absurd Retry-After value must be capped, not slept on directly")
+
+    def test_non_numeric_retry_after_falls_back_to_exponential_backoff(self):
+        delays = []
+
+        def fake_sleep(seconds):
+            delays.append(seconds)
+
+        def always_429():
+            raise _status_error(anthropic.RateLimitError, 429, "slow down", headers={"retry-after": "not-a-number"})
+
+        with patch("modules.util.time.sleep", new=fake_sleep):
+            with self.assertRaises(anthropic.RateLimitError):
+                with_retry_sync(always_429, retries=2, base_delay=2.0)
+
+        self.assertEqual(delays, [2.0])
+
+
+class TestWithRetrySyncQuotaExceeded(unittest.TestCase):
+    """Account quota exhaustion fails fast, is never retried, and the
+    exception is re-raised unmodified - see TestWithRetryQuotaExceeded
+    above."""
+
+    def test_quota_exceeded_fails_immediately_no_retry(self):
+        attempts = []
+
+        def always_quota_exceeded():
+            attempts.append(1)
+            raise _status_error(anthropic.BadRequestError, 400, QUOTA_EXCEEDED_MESSAGE)
+
+        with self.assertRaises(anthropic.BadRequestError):
+            with_retry_sync(always_quota_exceeded, retries=5, base_delay=0.01)
+
+        self.assertEqual(len(attempts), 1, "a quota-exceeded error must not be retried at all")
+
+    def test_quota_exceeded_never_sleeps(self):
+        slept = []
+
+        def fake_sleep(seconds):
+            slept.append(seconds)
+
+        def always_quota_exceeded():
+            raise _status_error(anthropic.BadRequestError, 400, QUOTA_EXCEEDED_MESSAGE)
+
+        with patch("modules.util.time.sleep", new=fake_sleep):
+            with self.assertRaises(anthropic.BadRequestError):
+                with_retry_sync(always_quota_exceeded, retries=5, base_delay=2.0)
+
+        self.assertEqual(slept, [], "quota exhaustion must never trigger a backoff sleep")
+
+    def test_quota_exceeded_raises_the_original_exception_unmodified(self):
+        original = _status_error(anthropic.BadRequestError, 400, QUOTA_EXCEEDED_MESSAGE)
+
+        def always_quota_exceeded():
+            raise original
+
+        with self.assertRaises(anthropic.BadRequestError) as ctx:
+            with_retry_sync(always_quota_exceeded, retries=3, base_delay=0.01)
+
+        self.assertIs(ctx.exception, original)
+
+
+class TestWithRetrySyncNonRetryable(unittest.TestCase):
+    """Auth failures, permission errors, and invalid requests fail
+    immediately with no retry - see TestWithRetryNonRetryable above."""
+
+    def test_authentication_failure_fails_immediately_no_retry(self):
+        attempts = []
+
+        def always_auth_error():
+            attempts.append(1)
+            raise _status_error(anthropic.AuthenticationError, 401)
+
+        with self.assertRaises(anthropic.AuthenticationError):
+            with_retry_sync(always_auth_error, retries=5, base_delay=0.01)
+
+        self.assertEqual(len(attempts), 1)
+
+    def test_permission_denied_fails_immediately_no_retry(self):
+        attempts = []
+
+        def always_permission_error():
+            attempts.append(1)
+            raise _status_error(anthropic.PermissionDeniedError, 403)
+
+        with self.assertRaises(anthropic.PermissionDeniedError):
+            with_retry_sync(always_permission_error, retries=5, base_delay=0.01)
+
+        self.assertEqual(len(attempts), 1)
+
+    def test_generic_invalid_request_fails_immediately_no_retry(self):
+        attempts = []
+
+        def always_invalid_request():
+            attempts.append(1)
+            raise _status_error(anthropic.BadRequestError, 400, "messages: roles must alternate")
+
+        with self.assertRaises(anthropic.BadRequestError):
+            with_retry_sync(always_invalid_request, retries=5, base_delay=0.01)
+
+        self.assertEqual(len(attempts), 1)
+
+    def test_non_retryable_never_sleeps(self):
+        slept = []
+
+        def fake_sleep(seconds):
+            slept.append(seconds)
+
+        def always_auth_error():
+            raise _status_error(anthropic.AuthenticationError, 401)
+
+        with patch("modules.util.time.sleep", new=fake_sleep):
+            with self.assertRaises(anthropic.AuthenticationError):
+                with_retry_sync(always_auth_error, retries=5, base_delay=2.0)
 
         self.assertEqual(slept, [], "non-retryable errors must never trigger a backoff sleep")
 

@@ -10,7 +10,9 @@ from config import (
     ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MIN_FIT_SCORE,
     JOB_QUEUE_PATH, MASTER_RESUME_PATH, CANDIDATE_PROFILE,
 )
-from modules.util import load_queue, save_queue, parse_llm_json, get_client, tracked_create, track_stage
+from modules.util import (
+    load_queue, save_queue, parse_llm_json, get_client, tracked_create, track_stage, with_retry_sync,
+)
 
 client = get_client(ANTHROPIC_API_KEY)
 
@@ -53,19 +55,22 @@ Description:
 
 Score this candidate's fit for this job."""
 
-        response = tracked_create(
-            client, "score_job",
-            model=CLAUDE_MODEL,
-            max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": stable_context, "cache_control": {"type": "ephemeral"}},
-                    {"type": "text", "text": job_context},
-                ],
-            }],
-        )
+        def _call():
+            return tracked_create(
+                client, "score_job",
+                model=CLAUDE_MODEL,
+                max_tokens=MAX_TOKENS,
+                system=SYSTEM_PROMPT,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": stable_context, "cache_control": {"type": "ephemeral"}},
+                        {"type": "text", "text": job_context},
+                    ],
+                }],
+            )
+
+        response = with_retry_sync(_call)
 
         result = parse_llm_json(response.content[0].text)
         if "parse_error" in result:

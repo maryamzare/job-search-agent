@@ -204,6 +204,58 @@ async def with_retry(coro_fn, retries: int = 3, base_delay: float = 2.0, max_del
             await asyncio.sleep(delay)
 
 
+def with_retry_sync(fn, retries: int = 3, base_delay: float = 2.0, max_delay: float = 60.0):
+    """Synchronous counterpart of with_retry, for modules built on the sync
+    Anthropic client (module2_scoring, module3_resume, module4_coverletter)
+    rather than AsyncAnthropic. Same classify_error()-based four-category
+    behavior as with_retry - see its docstring for the full rationale on
+    why each category is handled the way it is - just a plain callable
+    instead of a coroutine function, and time.sleep() instead of
+    asyncio.sleep(). The two aren't merged into one implementation because
+    doing so would mean either forcing the sync call sites onto an event
+    loop they don't otherwise need, or forcing with_retry's proven async
+    callers through a sync-async bridge - both a bigger change than this
+    fix calls for.
+    """
+    for attempt in range(retries):
+        try:
+            return fn()
+        except Exception as e:
+            category = classify_error(e)
+
+            if category == ERROR_QUOTA_EXCEEDED:
+                print(
+                    f"    [quota-exceeded] {type(e).__name__}: the account has hit its usage "
+                    f"limit. This will not resolve by retrying. Not retrying - see "
+                    f"`python3 evaluation_recovery.py status` if this call is part of the "
+                    f"evaluation recovery workflow, or check the account's usage dashboard "
+                    f"otherwise. Error: {e}"
+                )
+                raise
+
+            if category == ERROR_NON_RETRYABLE:
+                raise
+
+            if attempt == retries - 1:
+                raise
+
+            if category == ERROR_RATE_LIMITED:
+                retry_after = _retry_after_seconds(e)
+                if retry_after is not None:
+                    delay = min(retry_after, max_delay)
+                    print(f"    [retry] {type(e).__name__} (rate limited) — honoring Retry-After: "
+                          f"{delay:.0f}s ({attempt + 1}/{retries})")
+                else:
+                    delay = min(base_delay * (2 ** attempt), max_delay)
+                    print(f"    [retry] {type(e).__name__} (rate limited, no Retry-After header) "
+                          f"— retrying in {delay:.0f}s ({attempt + 1}/{retries})")
+            else:
+                delay = min(base_delay * (2 ** attempt), max_delay)
+                print(f"    [retry] {type(e).__name__} — retrying in {delay:.0f}s ({attempt + 1}/{retries})")
+
+            time.sleep(delay)
+
+
 def current_date_context() -> str:
     """A one-line date-grounding string for prompts that reason about dates.
 
