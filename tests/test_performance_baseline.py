@@ -148,6 +148,28 @@ class TestComputeApiUsageByModule(unittest.TestCase):
         usage = compute_api_usage_by_module(entries)
         self.assertEqual(usage["module2_scoring"]["total_tokens"], 0)
 
+    def test_cache_creation_and_read_tokens_are_aggregated(self):
+        entries = [
+            {
+                "label": "score_job", "success": True, "input_tokens": 50, "output_tokens": 20,
+                "cache_creation_input_tokens": 900, "cache_read_input_tokens": 0, "cost_usd": 0.004,
+            },
+            {
+                "label": "score_job", "success": True, "input_tokens": 50, "output_tokens": 20,
+                "cache_creation_input_tokens": 0, "cache_read_input_tokens": 900, "cost_usd": 0.0006,
+            },
+        ]
+        usage = compute_api_usage_by_module(entries)
+        self.assertEqual(usage["module2_scoring"]["cache_creation_tokens"], 900)
+        self.assertEqual(usage["module2_scoring"]["cache_read_tokens"], 900)
+
+    def test_missing_cache_fields_treated_as_zero_not_a_crash(self):
+        # Entries logged before cache_control existed have no cache fields at all.
+        entries = [{"label": "score_job", "success": True, "input_tokens": 50, "output_tokens": 20}]
+        usage = compute_api_usage_by_module(entries)
+        self.assertEqual(usage["module2_scoring"]["cache_creation_tokens"], 0)
+        self.assertEqual(usage["module2_scoring"]["cache_read_tokens"], 0)
+
 
 class TestComputeStageTimingByModule(unittest.TestCase):
     def test_average_and_median_over_known_values(self):

@@ -43,10 +43,19 @@ def module_for_label(label: str) -> str:
 
 def compute_api_usage_by_module(usage_log_entries: list) -> dict:
     """Aggregate util.tracked_create/tracked_create_async log entries by
-    module: number of calls, input/output/total tokens, and estimated
-    cost. Entries with no usage recorded (a failed call) are counted
-    toward `calls` and `failures` but contribute zero tokens/cost, since
-    a failed call has no response.usage to read.
+    module: number of calls, input/output/total tokens, cache read/write
+    tokens, and estimated cost. Entries with no usage recorded (a failed
+    call) are counted toward `calls` and `failures` but contribute zero
+    tokens/cost, since a failed call has no response.usage to read.
+
+    cache_creation_tokens / cache_read_tokens come straight from
+    response.usage (see util._log_llm_call) - a module with
+    cache_read_tokens > 0 across multiple calls is a cache actually
+    paying off; all-zero cache_read_tokens despite cache_control being
+    set (see module2_scoring/module3_resume/module4_coverletter) means
+    either no repeat calls have landed yet, or the cacheable prefix is
+    below the model's minimum cacheable length - see
+    docs/PERFORMANCE_BASELINE.md "Prompt caching" for which case applies.
     """
     by_module = {}
     for entry in usage_log_entries:
@@ -57,6 +66,8 @@ def compute_api_usage_by_module(usage_log_entries: list) -> dict:
             "input_tokens": 0,
             "output_tokens": 0,
             "total_tokens": 0,
+            "cache_creation_tokens": 0,
+            "cache_read_tokens": 0,
             "cost_usd": 0.0,
         })
         row["calls"] += 1
@@ -68,6 +79,8 @@ def compute_api_usage_by_module(usage_log_entries: list) -> dict:
         row["input_tokens"] += input_tokens
         row["output_tokens"] += output_tokens
         row["total_tokens"] += input_tokens + output_tokens
+        row["cache_creation_tokens"] += entry.get("cache_creation_input_tokens") or 0
+        row["cache_read_tokens"] += entry.get("cache_read_input_tokens") or 0
         row["cost_usd"] += entry.get("cost_usd") or 0.0
 
     for row in by_module.values():

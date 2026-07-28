@@ -28,11 +28,16 @@ def generate_cover_letter(job: dict) -> str:
         with open(MASTER_RESUME_PATH) as f:
             resume = f.read()
 
-        prompt = f"""Candidate profile:
+        # Split so the part that's identical on every call (profile + resume
+        # highlights) forms a cacheable prefix, with only the job-specific
+        # part after it. See ARCHITECTURE.md "Prompt caching".
+        stable_context = f"""Candidate profile:
 {CANDIDATE_PROFILE}
 
 Resume highlights:
-{resume[:2000]}
+{resume[:2000]}"""
+
+        job_context = f"""
 
 Job:
 Title: {job.get('title')}
@@ -47,7 +52,13 @@ Write the cover letter."""
             model=CLAUDE_MODEL,
             max_tokens=MAX_TOKENS,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": stable_context, "cache_control": {"type": "ephemeral"}},
+                    {"type": "text", "text": job_context},
+                ],
+            }],
         )
 
         return response.content[0].text

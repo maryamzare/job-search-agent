@@ -11,12 +11,14 @@ Run: python3 -m unittest discover -s tests -v
 """
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import modules.util as util
 from modules.module2b_board_review import POSTING_FIELDS, _posting_context, run_advisory_board
 
 
@@ -68,6 +70,16 @@ class TestRunAdvisoryBoardPromptContent(unittest.IsolatedAsyncioTestCase):
         "composite_score": 8, "action": "apply", "summary": "ok",
         "top_concern": "", "top_strength": "",
     }
+
+    def setUp(self):
+        # run_advisory_board runs inside a real (unmocked) track_stage()
+        # block - redirect its log target so these tests don't write into
+        # the real data/pipeline_stage_log.jsonl.
+        self._original_stage_log_path = util.PIPELINE_STAGE_LOG_PATH
+        util.PIPELINE_STAGE_LOG_PATH = tempfile.mktemp(suffix=".jsonl")
+
+    def tearDown(self):
+        util.PIPELINE_STAGE_LOG_PATH = self._original_stage_log_path
 
     async def _run(self, job):
         calls = []

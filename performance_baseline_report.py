@@ -42,10 +42,12 @@ def print_report() -> None:
     if not usage_by_module:
         print("No LLM calls logged yet. Run the pipeline, then re-run this report.")
     else:
-        print(f"{'module':<28} {'calls':>6} {'fail':>5} {'in_tok':>8} {'out_tok':>8} {'total_tok':>10} {'cost_usd':>10}")
+        print(f"{'module':<28} {'calls':>6} {'fail':>5} {'in_tok':>8} {'out_tok':>8} {'total_tok':>10} "
+              f"{'cache_wr':>9} {'cache_rd':>9} {'cost_usd':>10}")
         for module, row in sorted(usage_by_module.items()):
             print(f"{module:<28} {row['calls']:>6} {row['failures']:>5} {row['input_tokens']:>8} "
-                  f"{row['output_tokens']:>8} {row['total_tokens']:>10} ${row['cost_usd']:>9.4f}")
+                  f"{row['output_tokens']:>8} {row['total_tokens']:>10} {row['cache_creation_tokens']:>9} "
+                  f"{row['cache_read_tokens']:>9} ${row['cost_usd']:>9.4f}")
 
     print("\n--- Stage timing by module (slowest first) ---")
     stage_timing = compute_stage_timing_by_module(stage_entries)

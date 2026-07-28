@@ -35,14 +35,21 @@ def tailor_resume(job: dict) -> str:
         with open(MASTER_RESUME_PATH) as f:
             master = f.read()
 
-        prompt = f"""Job to target:
+        # Master resume is identical on every call; the job posting isn't.
+        # Putting the resume first (reordered from the original job-then-resume
+        # layout - required so the stable content forms a cacheable prefix,
+        # per ARCHITECTURE.md "Prompt caching") and marking it as the cache
+        # breakpoint means only the job-specific block below it is ever new.
+        stable_context = f"""Master resume:
+{master}"""
+
+        job_context = f"""
+
+Job to target:
 Title: {job.get('title')}
 Company: {job.get('company')}
 Description:
 {job.get('description', '')[:3000]}
-
-Master resume:
-{master}
 
 Rewrite the resume to best match this job."""
 
@@ -51,7 +58,13 @@ Rewrite the resume to best match this job."""
             model=CLAUDE_MODEL,
             max_tokens=MAX_TOKENS,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": stable_context, "cache_control": {"type": "ephemeral"}},
+                    {"type": "text", "text": job_context},
+                ],
+            }],
         )
 
         return response.content[0].text

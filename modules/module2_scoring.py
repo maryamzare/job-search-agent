@@ -33,11 +33,17 @@ def score_job(job: dict) -> dict:
         description = job.get("description") or job.get("title", "")
         resume = load_resume()
 
-        prompt = f"""Candidate profile:
+        # Split so the part that's identical on every call (profile + resume
+        # excerpt) forms a cacheable prefix, with only the job-specific part
+        # after it. See ARCHITECTURE.md "Prompt caching" for why the split is
+        # here specifically and the current-content-size caveat.
+        stable_context = f"""Candidate profile:
 {CANDIDATE_PROFILE}
 
 Resume excerpt:
-{resume[:3000]}
+{resume[:3000]}"""
+
+        job_context = f"""
 
 Job posting:
 Title: {job.get('title')}
@@ -52,7 +58,13 @@ Score this candidate's fit for this job."""
             model=CLAUDE_MODEL,
             max_tokens=MAX_TOKENS,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": stable_context, "cache_control": {"type": "ephemeral"}},
+                    {"type": "text", "text": job_context},
+                ],
+            }],
         )
 
         result = parse_llm_json(response.content[0].text)
