@@ -3,9 +3,9 @@ Job lifecycle timing metrics.
 
 Answers a question the pipeline had no way to answer before: once a job
 is shortlisted, how long until it's actually applied to - and which jobs
-never make it there at all? CLAUDE.md's own session notes recorded this
-happening in practice (two 88-scoring Uber jobs lost to "shortlist-
-sitting"), but there was nothing measuring it, only the anecdote.
+never make it there at all? Prior session notes recorded this happening
+in practice (high-scoring jobs lost to "shortlist-sitting"), but there
+was nothing measuring it, only the anecdote.
 
 Three lifecycle timestamps feed this (set at the point each transition
 happens - see module2_scoring.score_all_discovered, module5_apply.
