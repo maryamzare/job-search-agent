@@ -17,6 +17,7 @@ All notable changes to this project are documented here.
 - `score_job`'s description fallback now triggers on an empty string, not only a missing key.
 - Stale "Georgetown, 2026" corrected to "2027" in the scoring and cover-letter prompts.
 - `VALID_STATUSES`/`STATUS_EMOJI` now include `board_approved`, `in_progress`, `questionnaire_submitted`, and `closed` — statuses already in real use that the tracker previously couldn't display or accept.
+- **`module2b_board_review` no longer serializes a job's full accumulated pipeline history into every reviewer's prompt.** `run_advisory_board()` previously called `json.dumps(job, indent=2)`, including fields like `board_reviews`, `resume_scorecard`, and `status` that mutate as a job moves through later stages — meaning the same job's prompt content changed over time and could balloon to ~11,600 tokens (measured) for a job carrying full history, independent of any prompt-caching work and defeating it by construction. `_posting_context(job)` now extracts only the five fields a reviewer actually needs (`title`, `company`, `location`, `url`, `description`, defaulting missing ones to `""` for a fixed shape), which measured out to a 92.7% average size reduction across the 45 already-reviewed jobs currently in the queue (48,662 → 3,553 chars/job). No prompt caching was added in this change — see `ARCHITECTURE.md` → Module 2b prompt context and `docs/PERFORMANCE_BASELINE.md` § 3 for the full before/after analysis and why this is a prerequisite for caching, not caching itself.
 
 ### Added
 

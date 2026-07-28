@@ -43,6 +43,20 @@ Reviews: {reviews}
 Return JSON: {{"composite_score": 0-10, "action": "apply|defer|skip",
 "summary": "2 sentences", "top_concern": "...", "top_strength": "..."}}"""
 
+# The only fields a reviewer needs to judge a *posting* - not the pipeline's
+# accumulated history of that job (fit_score/fit_reasons/status/board_reviews/
+# resume_board/resume_scorecard/...), which grows over the job's lifecycle and
+# has nothing to do with fit/strategy/risk/effort. A fixed key set (defaulting
+# missing ones to "") also keeps the serialized shape identical across every
+# job, rather than varying with however much history a given job happens to
+# carry - see ARCHITECTURE.md "Module 2b prompt context" for why that matters.
+POSTING_FIELDS = ("title", "company", "location", "url", "description")
+
+
+def _posting_context(job: dict) -> dict:
+    """Extract just the posting fields a board reviewer needs from `job`."""
+    return {field: job.get(field, "") for field in POSTING_FIELDS}
+
 
 async def _call_reviewer(role: str, system_prompt: str, content: str) -> tuple[str, dict]:
     response = await tracked_create_async(
@@ -57,7 +71,8 @@ async def _call_reviewer(role: str, system_prompt: str, content: str) -> tuple[s
 
 async def run_advisory_board(job: dict, resume: str) -> dict:
     with track_stage("module2b_board_review", company=job.get("company"), title=job.get("title")):
-        content = f"{current_date_context()}\n\nJOB:\n{json.dumps(job, indent=2)}\n\nRESUME:\n{resume}"
+        posting = _posting_context(job)
+        content = f"{current_date_context()}\n\nJOB:\n{json.dumps(posting, indent=2)}\n\nRESUME:\n{resume}"
 
         # All four reviewers run in parallel
         results = await asyncio.gather(
