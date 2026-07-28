@@ -31,7 +31,7 @@ Both the job-fit board (2b) and the resume board (3b) exist to catch problems be
 
 ### Date-grounding for reviewers
 
-Reviewer prompts that reason qualitatively about a resume (red flags, career-arc coherence) have no inherent notion of "today" — an LLM call has no wall-clock access unless told. `modules/util.current_date_context()` is prepended to the shared reviewer context in module2b and module3b for exactly this reason: without it, a real past date can be misread as suspiciously future-dated (this was found happening on ~95% of resume-board reviews in production data, each one incorrectly flagging the candidate's real, already-past INRIX end date as a red flag and triggering an unnecessary rewrite).
+Reviewer prompts that reason qualitatively about a resume (red flags, career-arc coherence) have no inherent notion of "today" — an LLM call has no wall-clock access unless told. `modules/util.current_date_context()` is prepended to the shared reviewer context in module2b and module3b for exactly this reason: without it, a real past date can be misread as suspiciously future-dated (this was found happening on ~95% of resume-board reviews in production data, each one incorrectly flagging the candidate's real, already-past employment end date as a red flag and triggering an unnecessary rewrite).
 
 ### Retry policy: three failure categories, three different responses
 
@@ -86,7 +86,7 @@ Either way, the underlying check is the same idempotent command — the scheduli
 
 ### Pipeline timing instrumentation
 
-**Why this was added.** The pipeline had no way to answer "where is time actually being lost?" — only anecdote. CLAUDE.md's own session notes recorded a concrete instance: two 88-scoring Uber jobs were lost to what the notes call "shortlist-sitting" — they cleared the fit-score bar but sat un-applied-to until the postings closed. The stated rule ("80+ scores get applications within 48h") existed as a policy with no instrumentation checking whether it was actually being followed.
+**Why this was added.** The pipeline had no way to answer "where is time actually being lost?" — only anecdote. Prior session notes recorded a concrete instance: two high-scoring jobs were lost to what the notes call "shortlist-sitting" — they cleared the fit-score bar but sat un-applied-to until the postings closed. The stated rule ("80+ scores get applications within 48h") existed as a policy with no instrumentation checking whether it was actually being followed.
 
 **Design — three timestamps, set at the exact point each transition already happens in the code:**
 
@@ -101,7 +101,7 @@ All three are additive (`job.setdefault(...)` or plain assignment alongside the 
 **The graceful-degradation decision.** These timestamps only exist going forward from when this instrumentation shipped — none of the 294 jobs already in `data/job_queue.json` were shortlisted or applied to *with a timestamp recorded*, and there's no way to reconstruct one without fabricating data. Rather than wait for new data to accumulate before this becomes useful, `modules/lifecycle_metrics.compute_metrics()` splits its metrics into two kinds:
 
 - **Timestamp-dependent** (average/median shortlist-to-apply hours, "applied late"): require both `shortlisted_at` and `application_submitted_at` to be present and parseable. Zero historical jobs have these, so these read as "no data yet" today — expected, not a bug — and will populate as jobs move through the pipeline from here on.
-- **Status-dependent** (never-applied, closed-before-application, "still pending and delayed"): computed from `status` and `fit_score` alone, which every job already has. These are meaningful *immediately*, including against the existing 294-job queue — running the report today already surfaces the exact real incidents that motivated this work (the two Uber jobs, plus an 88-score Apple EPM role, all closed before ever being applied to).
+- **Status-dependent** (never-applied, closed-before-application, "still pending and delayed"): computed from `status` and `fit_score` alone, which every job already has. These are meaningful *immediately*, including against the existing 294-job queue — running the report today already surfaces real incidents that motivated this work (several high-scoring jobs closed before ever being applied to).
 
 **What decisions this enables.** The report's "high-score jobs delayed" and "closed before application" sections turn "we lost some good jobs to slowness" from an anecdote into a specific, named, sorted-by-score list — the actionable answer to "which job should I apply to right now" and "which pattern of loss should I fix in the process." Over time, the average/median duration numbers answer whether the 48-hour rule is actually being met, not just stated.
 
