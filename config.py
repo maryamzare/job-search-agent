@@ -24,6 +24,7 @@ JOB_QUEUE_PATH = "data/job_queue.json"
 RESUME_OUTPUT_DIR = "outputs/tailored_resumes"
 COVERLETTER_OUTPUT_DIR = "outputs/cover_letters"
 LLM_USAGE_LOG_PATH = "data/llm_usage_log.jsonl"
+PIPELINE_STAGE_LOG_PATH = "data/pipeline_stage_log.jsonl"
 
 # --- Candidate Profile ---
 # Single source of truth for candidate facts sent to Claude. Previously

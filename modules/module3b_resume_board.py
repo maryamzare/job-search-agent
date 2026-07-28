@@ -10,7 +10,7 @@ import os
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, JOB_QUEUE_PATH, RESUME_OUTPUT_DIR
 from modules.util import (
     slugify as _slugify, load_queue, save_queue, parse_llm_json as _parse_json,
-    get_async_client, tracked_create_async, current_date_context, with_retry,
+    get_async_client, tracked_create_async, current_date_context, with_retry, track_stage,
 )
 
 async_client = get_async_client(ANTHROPIC_API_KEY)
@@ -157,39 +157,40 @@ async def rewrite_resume(draft_resume: str, scorecard: dict) -> str:
 
 
 async def review_resume(draft_resume: str, job: dict) -> dict:
-    context = f"{current_date_context()}\n\nJOB POSTING:\n{job.get('description', job.get('title', ''))[:2000]}\n\nRESUME:\n{draft_resume}"
+    with track_stage("module3b_resume_board", company=job.get("company"), title=job.get("title")):
+        context = f"{current_date_context()}\n\nJOB POSTING:\n{job.get('description', job.get('title', ''))[:2000]}\n\nRESUME:\n{draft_resume}"
 
-    # 5 reviewers in parallel
-    results = await asyncio.gather(
-        *[_call_reviewer(role, prompt, context) for role, prompt in RESUME_BOARD.items()]
-    )
-    reviews = dict(results)
-
-    # Chief Editor pass
-    async def _editor_call():
-        return await tracked_create_async(
-            async_client, "resume_board:chief_editor",
-            model=CLAUDE_MODEL,
-            max_tokens=MAX_TOKENS,
-            system=CHIEF_EDITOR_PROMPT,
-            messages=[{
-                "role": "user",
-                "content": f"{context}\n\nREVIEWER FEEDBACK:\n{json.dumps(reviews, indent=2)}",
-            }],
+        # 5 reviewers in parallel
+        results = await asyncio.gather(
+            *[_call_reviewer(role, prompt, context) for role, prompt in RESUME_BOARD.items()]
         )
-    editor_response = await with_retry(_editor_call)
-    scorecard = _parse_json(editor_response.content[0].text)
+        reviews = dict(results)
 
-    final_resume = draft_resume
-    if not scorecard.get("ready_to_submit", True):
-        print(f"    [resume-board] Not ready — rewriting. Blocker: {scorecard.get('blocker')}")
-        final_resume = await rewrite_resume(draft_resume, scorecard)
+        # Chief Editor pass
+        async def _editor_call():
+            return await tracked_create_async(
+                async_client, "resume_board:chief_editor",
+                model=CLAUDE_MODEL,
+                max_tokens=MAX_TOKENS,
+                system=CHIEF_EDITOR_PROMPT,
+                messages=[{
+                    "role": "user",
+                    "content": f"{context}\n\nREVIEWER FEEDBACK:\n{json.dumps(reviews, indent=2)}",
+                }],
+            )
+        editor_response = await with_retry(_editor_call)
+        scorecard = _parse_json(editor_response.content[0].text)
 
-    return {
-        "final_resume": final_resume,
-        "scorecard": scorecard,
-        "raw_reviews": reviews,
-    }
+        final_resume = draft_resume
+        if not scorecard.get("ready_to_submit", True):
+            print(f"    [resume-board] Not ready — rewriting. Blocker: {scorecard.get('blocker')}")
+            final_resume = await rewrite_resume(draft_resume, scorecard)
+
+        return {
+            "final_resume": final_resume,
+            "scorecard": scorecard,
+            "raw_reviews": reviews,
+        }
 
 
 def _load_tailored_resume(job: dict) -> str:

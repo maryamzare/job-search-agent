@@ -15,6 +15,7 @@ performance/cost profile can be measured instead of guessed.
 """
 
 import asyncio
+import contextlib
 import json
 import os
 import re
@@ -23,7 +24,7 @@ from datetime import date
 
 import anthropic
 
-from config import LLM_USAGE_LOG_PATH
+from config import LLM_USAGE_LOG_PATH, PIPELINE_STAGE_LOG_PATH
 
 # HTTP status codes worth retrying with plain exponential backoff: transient
 # server-side failures where a second attempt has a real chance of
@@ -289,6 +290,50 @@ async def tracked_create_async(client, label: str, **kwargs):
         raise
     _log_llm_call(label, model, time.monotonic() - start, response.usage, True)
     return response
+
+
+def _log_stage(stage: str, duration_s: float, success: bool, **extra) -> None:
+    entry = {
+        "timestamp": time.time(),
+        "stage": stage,
+        "duration_s": round(duration_s, 3),
+        "success": success,
+    }
+    entry.update(extra)
+
+    log_dir = os.path.dirname(PIPELINE_STAGE_LOG_PATH)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+    with open(PIPELINE_STAGE_LOG_PATH, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+@contextlib.contextmanager
+def track_stage(stage: str, **extra):
+    """Measure wall-clock time for one pipeline-stage unit of work (e.g.
+    scoring one job, tailoring one resume) and log it to
+    data/pipeline_stage_log.jsonl for performance-baseline analysis.
+
+    Purely observational: never affects the wrapped code's return value,
+    and re-raises whatever the wrapped block raises after logging that it
+    failed - this must never change what the caller sees, only add a
+    side-channel timing record.
+
+    `stage` is conventionally the module name (e.g. "module2_scoring") so
+    stage-level timing can be grouped the same way as the per-call
+    labels tracked_create/tracked_create_async already use. `**extra` is
+    merged into the logged entry as-is (e.g. company=..., title=...) for
+    per-job identification in the report.
+    """
+    start = time.monotonic()
+    success = True
+    try:
+        yield
+    except Exception:
+        success = False
+        raise
+    finally:
+        _log_stage(stage, time.monotonic() - start, success, **extra)
 
 
 def slugify(text: str) -> str:

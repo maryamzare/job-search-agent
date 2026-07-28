@@ -15,7 +15,7 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
 from config import TARGET_ROLES, TARGET_LOCATIONS, JOB_QUEUE_PATH
-from modules.util import load_queue as _load_queue, save_queue as _save_queue
+from modules.util import load_queue as _load_queue, save_queue as _save_queue, track_stage
 
 # Companies to query directly via ATS APIs (slug: display name)
 GREENHOUSE_COMPANIES = {
@@ -240,28 +240,29 @@ def deduplicate(jobs: list[dict]) -> list[dict]:
 # ── Orchestration ─────────────────────────────────────────────────────────────
 
 def discover_jobs() -> list[dict]:
-    raw = []
+    with track_stage("module1_discovery"):
+        raw = []
 
-    # LinkedIn search
-    for role in TARGET_ROLES:
-        for location in TARGET_LOCATIONS:
-            if location == "Hybrid":
-                continue  # LinkedIn doesn't have a "Hybrid" location filter
-            raw.extend(search_jobs_linkedin(role, location))
-            time.sleep(2)
+        # LinkedIn search
+        for role in TARGET_ROLES:
+            for location in TARGET_LOCATIONS:
+                if location == "Hybrid":
+                    continue  # LinkedIn doesn't have a "Hybrid" location filter
+                raw.extend(search_jobs_linkedin(role, location))
+                time.sleep(2)
 
-    # ATS APIs
-    print("[discovery] Scanning Greenhouse company boards...")
-    for slug, name in GREENHOUSE_COMPANIES.items():
-        raw.extend(search_jobs_greenhouse(slug, name))
+        # ATS APIs
+        print("[discovery] Scanning Greenhouse company boards...")
+        for slug, name in GREENHOUSE_COMPANIES.items():
+            raw.extend(search_jobs_greenhouse(slug, name))
 
-    print("[discovery] Scanning Lever company boards...")
-    for slug, name in LEVER_COMPANIES.items():
-        raw.extend(search_jobs_lever(slug, name))
+        print("[discovery] Scanning Lever company boards...")
+        for slug, name in LEVER_COMPANIES.items():
+            raw.extend(search_jobs_lever(slug, name))
 
-    jobs = deduplicate(raw)
-    print(f"[discovery] Total unique relevant jobs found: {len(jobs)}")
-    return jobs
+        jobs = deduplicate(raw)
+        print(f"[discovery] Total unique relevant jobs found: {len(jobs)}")
+        return jobs
 
 
 def load_queue() -> dict:

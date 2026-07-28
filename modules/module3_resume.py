@@ -6,7 +6,7 @@ Saves result to outputs/tailored_resumes/<slug>.txt
 
 import os
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MASTER_RESUME_PATH, RESUME_OUTPUT_DIR
-from modules.util import slugify, load_queue, get_client, tracked_create
+from modules.util import slugify, load_queue, get_client, tracked_create, track_stage
 
 client = get_client(ANTHROPIC_API_KEY)
 
@@ -31,10 +31,11 @@ RULES — follow all of these exactly:
 
 
 def tailor_resume(job: dict) -> str:
-    with open(MASTER_RESUME_PATH) as f:
-        master = f.read()
+    with track_stage("module3_resume", company=job.get("company"), title=job.get("title")):
+        with open(MASTER_RESUME_PATH) as f:
+            master = f.read()
 
-    prompt = f"""Job to target:
+        prompt = f"""Job to target:
 Title: {job.get('title')}
 Company: {job.get('company')}
 Description:
@@ -45,15 +46,15 @@ Master resume:
 
 Rewrite the resume to best match this job."""
 
-    response = tracked_create(
-        client, "tailor_resume",
-        model=CLAUDE_MODEL,
-        max_tokens=MAX_TOKENS,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
+        response = tracked_create(
+            client, "tailor_resume",
+            model=CLAUDE_MODEL,
+            max_tokens=MAX_TOKENS,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+        )
 
-    return response.content[0].text
+        return response.content[0].text
 
 
 def save_tailored_resume(job: dict, content: str) -> str:

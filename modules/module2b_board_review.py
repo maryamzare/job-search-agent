@@ -7,7 +7,10 @@ All four reviewers run in parallel via AsyncAnthropic.
 import asyncio
 import json
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, JOB_QUEUE_PATH, MASTER_RESUME_PATH
-from modules.util import load_queue, save_queue, parse_llm_json, get_async_client, tracked_create_async, current_date_context
+from modules.util import (
+    load_queue, save_queue, parse_llm_json, get_async_client, tracked_create_async,
+    current_date_context, track_stage,
+)
 
 async_client = get_async_client(ANTHROPIC_API_KEY)
 
@@ -53,27 +56,28 @@ async def _call_reviewer(role: str, system_prompt: str, content: str) -> tuple[s
 
 
 async def run_advisory_board(job: dict, resume: str) -> dict:
-    content = f"{current_date_context()}\n\nJOB:\n{json.dumps(job, indent=2)}\n\nRESUME:\n{resume}"
+    with track_stage("module2b_board_review", company=job.get("company"), title=job.get("title")):
+        content = f"{current_date_context()}\n\nJOB:\n{json.dumps(job, indent=2)}\n\nRESUME:\n{resume}"
 
-    # All four reviewers run in parallel
-    results = await asyncio.gather(
-        *[_call_reviewer(role, prompt, content) for role, prompt in BOARD.items()]
-    )
-    reviews = dict(results)
+        # All four reviewers run in parallel
+        results = await asyncio.gather(
+            *[_call_reviewer(role, prompt, content) for role, prompt in BOARD.items()]
+        )
+        reviews = dict(results)
 
-    # Chair synthesizes
-    chair_response = await tracked_create_async(
-        async_client, "board_review:chair",
-        model=CLAUDE_MODEL,
-        max_tokens=MAX_TOKENS,
-        messages=[{
-            "role": "user",
-            "content": CHAIR_PROMPT.format(reviews=json.dumps(reviews, indent=2)),
-        }],
-    )
-    board_decision = parse_llm_json(chair_response.content[0].text)
+        # Chair synthesizes
+        chair_response = await tracked_create_async(
+            async_client, "board_review:chair",
+            model=CLAUDE_MODEL,
+            max_tokens=MAX_TOKENS,
+            messages=[{
+                "role": "user",
+                "content": CHAIR_PROMPT.format(reviews=json.dumps(reviews, indent=2)),
+            }],
+        )
+        board_decision = parse_llm_json(chair_response.content[0].text)
 
-    return {"reviews": reviews, "board_decision": board_decision}
+        return {"reviews": reviews, "board_decision": board_decision}
 
 
 def _apply_board_decision(job: dict, decision: dict) -> None:

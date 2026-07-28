@@ -10,7 +10,7 @@ from config import (
     ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MIN_FIT_SCORE,
     JOB_QUEUE_PATH, MASTER_RESUME_PATH, CANDIDATE_PROFILE,
 )
-from modules.util import load_queue, save_queue, parse_llm_json, get_client, tracked_create
+from modules.util import load_queue, save_queue, parse_llm_json, get_client, tracked_create, track_stage
 
 client = get_client(ANTHROPIC_API_KEY)
 
@@ -29,10 +29,11 @@ def load_resume() -> str:
 
 
 def score_job(job: dict) -> dict:
-    description = job.get("description") or job.get("title", "")
-    resume = load_resume()
+    with track_stage("module2_scoring", company=job.get("company"), title=job.get("title")):
+        description = job.get("description") or job.get("title", "")
+        resume = load_resume()
 
-    prompt = f"""Candidate profile:
+        prompt = f"""Candidate profile:
 {CANDIDATE_PROFILE}
 
 Resume excerpt:
@@ -46,19 +47,19 @@ Description:
 
 Score this candidate's fit for this job."""
 
-    response = tracked_create(
-        client, "score_job",
-        model=CLAUDE_MODEL,
-        max_tokens=MAX_TOKENS,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
+        response = tracked_create(
+            client, "score_job",
+            model=CLAUDE_MODEL,
+            max_tokens=MAX_TOKENS,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+        )
 
-    result = parse_llm_json(response.content[0].text)
-    if "parse_error" in result:
-        result = {"score": 0, "reasons": ["parse error"], "gaps": []}
+        result = parse_llm_json(response.content[0].text)
+        if "parse_error" in result:
+            result = {"score": 0, "reasons": ["parse error"], "gaps": []}
 
-    return result
+        return result
 
 
 def score_all_discovered() -> None:

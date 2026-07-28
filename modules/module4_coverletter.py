@@ -9,7 +9,7 @@ from config import (
     ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MASTER_RESUME_PATH,
     COVERLETTER_OUTPUT_DIR, CANDIDATE_PROFILE,
 )
-from modules.util import slugify, load_queue, get_client, tracked_create
+from modules.util import slugify, load_queue, get_client, tracked_create, track_stage
 
 client = get_client(ANTHROPIC_API_KEY)
 
@@ -24,10 +24,11 @@ Write a compelling, concise 3-4 paragraph cover letter (~300 words). Rules:
 
 
 def generate_cover_letter(job: dict) -> str:
-    with open(MASTER_RESUME_PATH) as f:
-        resume = f.read()
+    with track_stage("module4_coverletter", company=job.get("company"), title=job.get("title")):
+        with open(MASTER_RESUME_PATH) as f:
+            resume = f.read()
 
-    prompt = f"""Candidate profile:
+        prompt = f"""Candidate profile:
 {CANDIDATE_PROFILE}
 
 Resume highlights:
@@ -41,15 +42,15 @@ Description:
 
 Write the cover letter."""
 
-    response = tracked_create(
-        client, "generate_cover_letter",
-        model=CLAUDE_MODEL,
-        max_tokens=MAX_TOKENS,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
+        response = tracked_create(
+            client, "generate_cover_letter",
+            model=CLAUDE_MODEL,
+            max_tokens=MAX_TOKENS,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+        )
 
-    return response.content[0].text
+        return response.content[0].text
 
 
 def save_cover_letter(job: dict, content: str) -> str:
