@@ -14,7 +14,7 @@ import re
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
-from config import TARGET_ROLES, TARGET_LOCATIONS, JOB_QUEUE_PATH
+from config import TARGET_ROLES, TARGET_LOCATIONS, JOB_QUEUE_PATH, LINKEDIN_LOOKBACK_HOURS
 from modules.util import load_queue as _load_queue, save_queue as _save_queue, track_stage
 
 # Companies to query directly via ATS APIs (slug: display name)
@@ -56,11 +56,13 @@ HEADERS = {
 
 # ── LinkedIn ──────────────────────────────────────────────────────────────────
 
-def _fetch_linkedin_page(role: str, location: str, start: int) -> list[dict]:
+def _fetch_linkedin_page(role: str, location: str, start: int, hours: int | None = None) -> list[dict]:
     url = (
         "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
         f"?keywords={quote_plus(role)}&location={quote_plus(location)}&start={start}"
     )
+    if hours:
+        url += f"&f_TPR=r{hours * 3600}"
     try:
         resp = requests.get(url, headers=HEADERS, timeout=15)
         if resp.status_code != 200:
@@ -97,8 +99,12 @@ def _fetch_linkedin_page(role: str, location: str, start: int) -> list[dict]:
 
 
 def _fetch_linkedin_description(job_url: str) -> str:
-    # Extract job ID from URL e.g. .../view/1234567890/
-    match = re.search(r"/view/(\d+)", job_url)
+    # Extract job ID from URL. LinkedIn serves both bare IDs
+    # (.../view/1234567890/) and slugged IDs (.../view/some-title-1234567890),
+    # so the ID must be matched at the end of the path, not right after
+    # "/view/" - a right-after-"/view/" match misses every slugged URL,
+    # which is most of what LinkedIn's search results actually return.
+    match = re.search(r"(\d+)/?$", job_url)
     if not match:
         return ""
     job_id = match.group(1)
@@ -118,11 +124,11 @@ def _fetch_linkedin_description(job_url: str) -> str:
         return ""
 
 
-def search_jobs_linkedin(role: str, location: str, pages: int = 2) -> list[dict]:
-    print(f"[discovery] LinkedIn: '{role}' in '{location}'")
+def search_jobs_linkedin(role: str, location: str, pages: int = 2, hours: int | None = None) -> list[dict]:
+    print(f"[discovery] LinkedIn: '{role}' in '{location}'" + (f" (past {hours}h)" if hours else ""))
     jobs = []
     for page in range(pages):
-        batch = _fetch_linkedin_page(role, location, start=page * 25)
+        batch = _fetch_linkedin_page(role, location, start=page * 25, hours=hours)
         jobs.extend(batch)
         if not batch:
             break
@@ -253,7 +259,7 @@ def discover_jobs() -> list[dict]:
             for location in TARGET_LOCATIONS:
                 if location == "Hybrid":
                     continue  # LinkedIn doesn't have a "Hybrid" location filter
-                raw.extend(search_jobs_linkedin(role, location))
+                raw.extend(search_jobs_linkedin(role, location, hours=LINKEDIN_LOOKBACK_HOURS))
                 time.sleep(2)
 
         # ATS APIs

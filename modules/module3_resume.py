@@ -5,10 +5,35 @@ Saves result to outputs/tailored_resumes/<slug>.txt
 """
 
 import os
-from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MASTER_RESUME_PATH, RESUME_OUTPUT_DIR
+from config import (
+    ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MASTER_RESUME_PATH, MASTER_RESUME_PM_PATH,
+    MASTER_RESUME_PM_PIVOT_PATH, MASTER_RESUME_SOLUTIONS_PATH, RESUME_OUTPUT_DIR,
+)
 from modules.util import job_artifact_key, load_queue, get_client, tracked_create, track_stage, with_retry_sync
 
 client = get_client(ANTHROPIC_API_KEY)
+
+
+def _master_resume_path_for(job: dict) -> str:
+    """Product Manager roles use the PM-framed master resume (product ownership,
+    roadmap, adoption metrics); everything else (TPM/EPM/Program Manager titles)
+    uses the delivery-framed one. 'product manager' won't false-match 'program
+    manager' or 'technical program manager'.
+
+    Jobs explicitly flagged with resume_variant (set manually when curating
+    candidates — title text alone can't reliably distinguish these from
+    standard TPM/PM postings) route to a dedicated pivot resume:
+      - 'pm_pivot': design-forward PM roles -> design-led pivot resume
+      - 'solutions': Solutions Engineer / Sales Engineer / AI Implementation
+        Consultant / DevRel-adjacent roles -> customer-translation resume"""
+    variant = job.get("resume_variant")
+    if variant == "pm_pivot":
+        return MASTER_RESUME_PM_PIVOT_PATH
+    if variant == "solutions":
+        return MASTER_RESUME_SOLUTIONS_PATH
+    if "product manager" in job.get("title", "").lower():
+        return MASTER_RESUME_PM_PATH
+    return MASTER_RESUME_PATH
 
 SYSTEM_PROMPT = """You are an expert resume writer specializing in TPM, AI Product, and Engineering Manager roles.
 Rewrite the candidate's resume to best match the job description provided.
@@ -32,7 +57,7 @@ RULES — follow all of these exactly:
 
 def tailor_resume(job: dict) -> str:
     with track_stage("module3_resume", company=job.get("company"), title=job.get("title")):
-        with open(MASTER_RESUME_PATH) as f:
+        with open(_master_resume_path_for(job)) as f:
             master = f.read()
 
         # Master resume is identical on every call; the job posting isn't.

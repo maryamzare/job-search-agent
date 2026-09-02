@@ -6,12 +6,28 @@ Saves result to outputs/cover_letters/<slug>.txt
 
 import os
 from config import (
-    ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MASTER_RESUME_PATH,
-    COVERLETTER_OUTPUT_DIR, CANDIDATE_PROFILE,
+    ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MASTER_RESUME_PATH, MASTER_RESUME_PM_PATH,
+    MASTER_RESUME_PM_PIVOT_PATH, MASTER_RESUME_SOLUTIONS_PATH, COVERLETTER_OUTPUT_DIR, CANDIDATE_PROFILE,
 )
 from modules.util import job_artifact_key, load_queue, get_client, tracked_create, track_stage, with_retry_sync
 
 client = get_client(ANTHROPIC_API_KEY)
+
+
+def _master_resume_path_for(job: dict) -> str:
+    """Mirrors module3_resume's selection so the cover letter draws on the same
+    framing as the resume. Jobs flagged resume_variant='pm_pivot' use the
+    design-led pivot resume; 'solutions' uses the customer-translation resume;
+    other Product Manager roles use the standard PM-framed resume; everything
+    else uses the TPM-framed resume."""
+    variant = job.get("resume_variant")
+    if variant == "pm_pivot":
+        return MASTER_RESUME_PM_PIVOT_PATH
+    if variant == "solutions":
+        return MASTER_RESUME_SOLUTIONS_PATH
+    if "product manager" in job.get("title", "").lower():
+        return MASTER_RESUME_PM_PATH
+    return MASTER_RESUME_PATH
 
 SYSTEM_PROMPT = """You are an expert cover letter writer for senior tech roles.
 Write a compelling, concise 3-4 paragraph cover letter (~300 words). Rules:
@@ -25,7 +41,7 @@ Write a compelling, concise 3-4 paragraph cover letter (~300 words). Rules:
 
 def generate_cover_letter(job: dict) -> str:
     with track_stage("module4_coverletter", company=job.get("company"), title=job.get("title")):
-        with open(MASTER_RESUME_PATH) as f:
+        with open(_master_resume_path_for(job)) as f:
             resume = f.read()
 
         # Split so the part that's identical on every call (profile + resume

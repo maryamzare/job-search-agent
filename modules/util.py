@@ -293,7 +293,18 @@ def _estimate_cost_usd(model: str, usage) -> float | None:
     return round(cost, 6)
 
 
+# Running count of real API calls made this process (tracked_create/
+# tracked_create_async both funnel through _log_llm_call exactly once per
+# attempt, success or failure, including each individual retry attempt) -
+# resets to 0 every time a script starts fresh; not persisted across runs.
+api_call_count = 0
+
+
 def _log_llm_call(label: str, model: str, latency_s: float, usage, success: bool, error: str = None) -> None:
+    global api_call_count
+    api_call_count += 1
+    print(f"[api-calls] count={api_call_count} label={label} success={success}")
+
     entry = {
         "timestamp": time.time(),
         "label": label,
