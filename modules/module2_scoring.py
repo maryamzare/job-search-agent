@@ -74,7 +74,10 @@ Score this candidate's fit for this job."""
 
         result = parse_llm_json(response.content[0].text)
         if "parse_error" in result:
-            result = {"score": 0, "reasons": ["parse error"], "gaps": []}
+            raise ValueError(f"Scoring response was not valid JSON: {result['parse_error']}")
+        score = result.get("score")
+        if isinstance(score, bool) or not isinstance(score, (int, float)) or not 0 <= score <= 100:
+            raise ValueError(f"Scoring response has invalid score: {score!r}")
 
         return result
 
@@ -87,7 +90,15 @@ def score_all_discovered() -> None:
             continue
 
         print(f"[scoring] Scoring: {job.get('title')} @ {job.get('company')}")
-        result = score_job(job)
+        try:
+            result = score_job(job)
+        except Exception as exc:
+            # Do not turn a model/API failure into a permanent rejection.
+            job["scoring_error"] = f"{type(exc).__name__}: {exc}"[:500]
+            print(f"[scoring] ERROR (left discovered for retry): {job['scoring_error']}")
+            save_queue(queue, JOB_QUEUE_PATH)
+            continue
+        job.pop("scoring_error", None)
         job["fit_score"] = result.get("score", 0)
         job["fit_reasons"] = result.get("reasons", [])
         job["fit_gaps"] = result.get("gaps", [])

@@ -191,11 +191,16 @@ def search_jobs_lever(company_slug: str, company_name: str) -> list[dict]:
         location = categories.get("location", categories.get("team", ""))
         if location and not _location_matches(location):
             continue
-        description_parts = []
-        for section in item.get("descriptionBody", {}).get("body", []):
-            if section.get("text"):
-                description_parts.append(section["text"])
-        description = "\n".join(description_parts).strip()
+        # Lever's public postings API exposes plain-text description fields;
+        # descriptionBody is HTML/a string on some tenants, not a nested dict.
+        description_parts = [item.get("descriptionPlain", "")]
+        for section in item.get("lists", []):
+            description_parts.append(section.get("text", ""))
+            description_parts.append(
+                BeautifulSoup(section.get("content", ""), "html.parser").get_text("\n", strip=True)
+            )
+        description_parts.append(item.get("additionalPlain", ""))
+        description = "\n".join(part for part in description_parts if part).strip()
         apply_url = item.get("applyUrl", item.get("hostedUrl", ""))
         jobs.append({
             "title": title,
@@ -276,16 +281,14 @@ def save_queue(queue: dict) -> None:
 def add_new_jobs_to_queue(new_jobs: list[dict]) -> int:
     queue = load_queue()
     existing_urls = {j["url"] for j in queue["jobs"] if "url" in j}
-    existing_keys = {
-        (j.get("company", "").lower(), j.get("title", "").lower())
-        for j in queue["jobs"]
-    }
     added = 0
     for job in new_jobs:
-        key = (job.get("company", "").lower(), job.get("title", "").lower())
-        if job.get("url") not in existing_urls and key not in existing_keys:
+        # A company/title pair is not a posting identity. The same role may be
+        # reopened months later; a new canonical URL should enter the queue.
+        if job.get("url") and job.get("url") not in existing_urls:
             job["status"] = "discovered"
             queue["jobs"].append(job)
+            existing_urls.add(job["url"])
             added += 1
     save_queue(queue)
     print(f"[discovery] Added {added} new jobs to queue")

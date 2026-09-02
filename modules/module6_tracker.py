@@ -84,6 +84,11 @@ def update_status(company: str, title: str, new_status: str, notes: str = "") ->
         if job.get("company", "").lower() == company.lower() and job.get("title", "").lower() == title.lower():
             job["status"] = new_status
             job["last_updated"] = str(date.today())
+            if new_status in {"applied", "interviewing", "questionnaire_submitted", "offer", "rejected"}:
+                job.setdefault("applied_date", str(date.today()))
+                job.setdefault("application_submitted_at", datetime.now(timezone.utc).isoformat())
+            if new_status == "interviewing":
+                job.setdefault("interviewing_at", datetime.now(timezone.utc).isoformat())
             if new_status == "closed":
                 job.setdefault("closed_or_expired_at", datetime.now(timezone.utc).isoformat())
             if notes:

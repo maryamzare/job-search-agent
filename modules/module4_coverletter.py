@@ -9,7 +9,7 @@ from config import (
     ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MASTER_RESUME_PATH,
     COVERLETTER_OUTPUT_DIR, CANDIDATE_PROFILE,
 )
-from modules.util import slugify, load_queue, get_client, tracked_create, track_stage, with_retry_sync
+from modules.util import job_artifact_key, load_queue, get_client, tracked_create, track_stage, with_retry_sync
 
 client = get_client(ANTHROPIC_API_KEY)
 
@@ -68,8 +68,7 @@ Write the cover letter."""
 
 
 def save_cover_letter(job: dict, content: str) -> str:
-    slug = slugify(f"{job.get('company', 'company')}_{job.get('title', 'role')}")
-    filename = f"{slug}.txt"
+    filename = f"{job_artifact_key(job)}.txt"
     path = os.path.join(COVERLETTER_OUTPUT_DIR, filename)
     os.makedirs(COVERLETTER_OUTPUT_DIR, exist_ok=True)
     with open(path, "w") as f:
@@ -79,8 +78,7 @@ def save_cover_letter(job: dict, content: str) -> str:
 
 
 def generate_and_save(job: dict) -> str:
-    slug = slugify(f"{job.get('company', 'company')}_{job.get('title', 'role')}")
-    path = os.path.join(COVERLETTER_OUTPUT_DIR, f"{slug}.txt")
+    path = os.path.join(COVERLETTER_OUTPUT_DIR, f"{job_artifact_key(job)}.txt")
     if os.path.exists(path):
         print(f"[coverletter] Skipping (already exists): {path}")
         return path

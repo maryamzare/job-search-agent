@@ -14,8 +14,11 @@ to data/llm_usage_log.jsonl for every call, so the pipeline's real
 performance/cost profile can be measured instead of guessed.
 """
 
+from __future__ import annotations
+
 import asyncio
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -390,6 +393,22 @@ def track_stage(stage: str, **extra):
 
 def slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+
+
+def job_artifact_key(job: dict) -> str:
+    """Stable, posting-specific filename stem for generated materials.
+
+    Company/title alone is not unique: employers routinely repost the same
+    title with a new description. Including a short hash prevents an old
+    resume or cover letter from being silently reused for a new posting.
+    """
+    identity = "\n".join([
+        str(job.get("url") or job.get("apply_url") or ""),
+        str(job.get("description") or ""),
+    ])
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:10]
+    base = slugify(f"{job.get('company', 'company')}_{job.get('title', 'role')}")
+    return f"{base}_{digest}"
 
 
 def parse_llm_json(text: str) -> dict:

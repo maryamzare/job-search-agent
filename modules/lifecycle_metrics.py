@@ -25,12 +25,13 @@ metrics (never applied, closed before application) work from status
 alone and are meaningful immediately, even before any job has both
 timestamps recorded.
 """
+from __future__ import annotations
 import statistics
 from datetime import datetime, timezone
 
 # Jobs sitting somewhere between "passed the fit bar" and "applied" -
 # these are the ones that can still be lost to shortlist-sitting.
-PENDING_STATUSES = {"shortlisted", "board_approved", "in_progress"}
+PENDING_STATUSES = {"shortlisted", "in_progress"}
 
 # Statuses only reachable after an application was actually submitted -
 # used to avoid miscounting a job as "never applied" just because it
@@ -48,7 +49,11 @@ def _parse_iso(value) -> datetime | None:
     if not value:
         return None
     try:
-        dt = datetime.fromisoformat(value)
+        # Python 3.9 does not accept the ISO-8601 `Z` suffix even though
+        # external APIs commonly emit it; normalize it to an explicit UTC
+        # offset before parsing.
+        normalized = value[:-1] + "+00:00" if isinstance(value, str) and value.endswith("Z") else value
+        dt = datetime.fromisoformat(normalized)
     except (ValueError, TypeError):
         return None
     if dt.tzinfo is None:

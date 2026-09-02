@@ -7,11 +7,9 @@ Usage:
   python main.py resume       — tailor resumes for shortlisted jobs
   python main.py coverletter  — write cover letters for shortlisted jobs
   python main.py apply        — walk through shortlisted jobs to apply
-  python main.py board        — run advisory board review on all shortlisted jobs
-  python main.py resumeboard  — run resume advisory board + rewrite on shortlisted/board_approved jobs
   python main.py status       — show tracker summary
   python main.py pipeline     — show active pipeline (excludes filtered)
-  python main.py run          — run full pipeline: discover → score → board → resume → coverletter
+  python main.py run          — run lean pipeline: discover → score → resume
 """
 
 import sys
@@ -21,9 +19,7 @@ load_dotenv()
 
 import modules.module1_discovery as discovery
 import modules.module2_scoring as scoring
-import modules.module2b_board_review as board
 import modules.module3_resume as resume
-import modules.module3b_resume_board as resume_board
 import modules.module4_coverletter as coverletter
 import modules.module5_apply as apply_module
 import modules.module6_tracker as tracker
@@ -77,14 +73,6 @@ def cmd_coverletter():
             coverletter.generate_and_save(job)
 
 
-def cmd_board():
-    board.review_shortlisted()
-
-
-def cmd_resumeboard():
-    resume_board.review_resumes()
-
-
 def cmd_apply():
     apply_module.apply_to_shortlisted()
 
@@ -98,13 +86,11 @@ def cmd_pipeline():
 
 
 def cmd_run():
-    print("=== Running full pipeline ===")
+    print("=== Running lean interview-throughput pipeline ===")
     cmd_discover()
     cmd_score()
-    cmd_board()
     cmd_resume()
-    cmd_coverletter()
-    print("=== Pipeline complete. Run 'python main.py apply' to start applying. ===")
+    print("=== Materials ready. Run 'python main.py apply'; generate cover letters only when required. ===")
 
 
 COMMANDS = {
@@ -113,8 +99,6 @@ COMMANDS = {
     "score": cmd_score,
     "resume": cmd_resume,
     "coverletter": cmd_coverletter,
-    "board": cmd_board,
-    "resumeboard": cmd_resumeboard,
     "apply": cmd_apply,
     "status": cmd_status,
     "pipeline": cmd_pipeline,

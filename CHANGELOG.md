@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.0 — Interview-throughput rewrite
+
+- Removed the four-reviewer job board/Chair and five-reviewer resume board/Chief Editor. They duplicated the scorer and tailoring prompt without measured interview-conversion benefit.
+- The default pipeline is now `discover → score → tailor resume → apply`; cover letters are generated only when requested.
+- Invalid scoring JSON no longer becomes a permanent score of zero. Failed jobs remain `discovered` and retryable with an explicit `scoring_error`.
+- `in_progress` applications reappear first in the application flow instead of becoming unreachable.
+- Application flow blocks when the posting-specific resume is missing and saves each decision immediately.
+- Generated filenames include a posting fingerprint, preventing stale materials from being reused for reposted or changed roles.
+- Discovery deduplicates by posting URL instead of suppressing every future role with the same company/title.
+- Fixed Lever description parsing for its public API schema.
+- Manual tracker transitions now populate application and interview timestamps.
+
 All notable changes to this project are documented here.
 
 ## [Unreleased]

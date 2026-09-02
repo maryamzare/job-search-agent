@@ -8,45 +8,44 @@ import webbrowser
 from datetime import date, datetime, timezone
 from pathlib import Path
 from config import JOB_QUEUE_PATH, RESUME_OUTPUT_DIR, COVERLETTER_OUTPUT_DIR
-from modules.util import slugify, load_queue, save_queue
+from modules.util import job_artifact_key, load_queue, save_queue
 
 
 def _resume_path_for(job: dict) -> Path:
-    """Prefer the board-reviewed v2 resume over the pre-review v1 draft."""
-    v2 = job.get("resume_v2_path")
-    if v2 and Path(v2).exists():
-        return Path(v2)
-    slug = slugify(f"{job.get('company', 'company')}_{job.get('title', 'role')}")
-    return Path(RESUME_OUTPUT_DIR) / f"{slug}.txt"
+    """Return the resume generated for this exact posting."""
+    return Path(RESUME_OUTPUT_DIR) / f"{job_artifact_key(job)}.txt"
 
 
-def print_application_materials(job: dict) -> None:
-    slug = slugify(f"{job.get('company', 'company')}_{job.get('title', 'role')}")
+def print_application_materials(job: dict) -> bool:
     resume_path = _resume_path_for(job)
-    cl_path = Path(COVERLETTER_OUTPUT_DIR) / f"{slug}.txt"
+    cl_path = Path(COVERLETTER_OUTPUT_DIR) / f"{job_artifact_key(job)}.txt"
 
     print("\n" + "=" * 60)
     print(f"  {job.get('title')}")
     print(f"  {job.get('company')}  |  Score: {job.get('fit_score')}/100")
     print("=" * 60)
-    resume_label = " (board-reviewed)" if job.get("resume_v2_path") == str(resume_path) else ""
-    print(f"\n  RESUME:       {resume_path}{resume_label}")
+    print(f"\n  RESUME:       {resume_path}")
     print(f"  COVER LETTER: {cl_path}")
     print(f"  APPLY URL:    {job.get('apply_url') or job.get('url', 'unknown')}")
     print()
 
     if not resume_path.exists():
-        print(f"  WARNING: Resume file not found — run 'python3 main.py resume' first")
+        print(f"  BLOCKED: Resume file not found — run 'python3 main.py resume' first")
     if not cl_path.exists():
-        print(f"  WARNING: Cover letter not found — run 'python3 main.py coverletter' first")
+        print("  NOTE: No cover letter (generate one only if the application requires it)")
+    return resume_path.exists()
 
 
 def apply_to_shortlisted() -> None:
     queue = load_queue(JOB_QUEUE_PATH)
 
-    shortlisted = [j for j in queue["jobs"] if j.get("status") in ("shortlisted", "board_approved")]
+    shortlisted = [
+        j for j in queue["jobs"]
+        if j.get("status") in ("in_progress", "shortlisted", "board_approved")
+    ]
+    shortlisted.sort(key=lambda j: (j.get("status") != "in_progress", -(j.get("fit_score") or 0)))
     if not shortlisted:
-        print("[apply] No shortlisted/board-approved jobs. Run 'python3 main.py pipeline' to check your queue.")
+        print("[apply] No pending applications. Run 'python3 main.py pipeline' to check your queue.")
         return
 
     print(f"\n[apply] Starting application flow for {len(shortlisted)} job(s).")
@@ -57,7 +56,10 @@ def apply_to_shortlisted() -> None:
 
     for i, job in enumerate(shortlisted, 1):
         print(f"\n--- Job {i} of {len(shortlisted)} ---")
-        print_application_materials(job)
+        materials_ready = print_application_materials(job)
+        if not materials_ready:
+            print("  Skipping until a posting-specific resume exists.")
+            continue
 
         url = job.get("apply_url") or job.get("url")
         if url:
@@ -87,7 +89,9 @@ def apply_to_shortlisted() -> None:
             print(f"  Marked as IN_PROGRESS — come back to finish this one.")
             skipped += 1
 
-    save_queue(queue, JOB_QUEUE_PATH)
+        # Persist each decision immediately so Ctrl-C or a later failure does
+        # not discard confirmations already completed in this session.
+        save_queue(queue, JOB_QUEUE_PATH)
 
     print(f"\n[apply] Done. {submitted} submitted, {skipped} left in progress.")
     print("[apply] Run 'python3 main.py status' to see your full pipeline.\n")

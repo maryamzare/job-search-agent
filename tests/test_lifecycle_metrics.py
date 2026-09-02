@@ -113,11 +113,10 @@ class TestComputeMetricsNeverApplied(unittest.TestCase):
     def test_pending_statuses_count_as_never_applied(self):
         jobs = [
             _job(status="shortlisted"),
-            _job(status="board_approved"),
             _job(status="in_progress"),
         ]
         metrics = compute_metrics(jobs, now=NOW)
-        self.assertEqual(metrics["never_applied_count"], 3)
+        self.assertEqual(metrics["never_applied_count"], 2)
 
     def test_post_application_statuses_do_not_count_as_never_applied(self):
         # These predate application_submitted_at existing as a field, but

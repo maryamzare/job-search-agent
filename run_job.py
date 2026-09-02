@@ -1,93 +1,34 @@
-"""One-off pipeline runner for a single manually-added job."""
-import sys, os, asyncio
+"""Run the lean pipeline for one already-queued job."""
+import os
+import sys
 
-os.chdir("/Users/marmar/job-search-agent")
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 from dotenv import load_dotenv
-load_dotenv("/Users/marmar/job-search-agent/.env")
 
-sys.path.insert(0, "/Users/marmar/job-search-agent")
-sys.path.insert(0, "/Users/marmar/job-search-agent/modules")
+load_dotenv()
 
-import module2_scoring as scoring
-import module2b_board_review as board
-import module3_resume as resume
-import module3b_resume_board as resume_board
-import module4_coverletter as coverletter
-from config import JOB_QUEUE_PATH, MASTER_RESUME_PATH
-from util import slugify, load_queue, save_queue
+from config import JOB_QUEUE_PATH
+from modules import module2_scoring as scoring
+from modules import module3_resume as resume
+from modules.util import load_queue
 
-COMPANY = sys.argv[1]
-TITLE_KEYWORD = sys.argv[2]
-FORCE = "--force" in sys.argv  # override scorer and board
 
-# 1. Score
-print("=== SCORING ===")
+if len(sys.argv) != 3:
+    raise SystemExit("Usage: python3 run_job.py <company> <title-substring>")
+
+company, title_keyword = sys.argv[1:]
 scoring.score_all_discovered()
-
 queue = load_queue(JOB_QUEUE_PATH)
-job = next(j for j in queue["jobs"] if j["company"] == COMPANY and TITLE_KEYWORD in j["title"])
-print(f"Score: {job.get('fit_score')} | Status: {job.get('status')}")
+job = next(
+    (j for j in queue["jobs"] if j.get("company") == company and title_keyword in j.get("title", "")),
+    None,
+)
+if job is None:
+    raise SystemExit(f"Job not found: {title_keyword} @ {company}")
+if job.get("status") not in {"shortlisted", "board_approved", "in_progress"}:
+    raise SystemExit(f"Job is not eligible to apply: status={job.get('status')} score={job.get('fit_score')}")
 
-if job.get("status") == "filtered_out":
-    if FORCE:
-        print("Score below threshold — overriding per user request")
-        job["status"] = "shortlisted"
-        save_queue(queue, JOB_QUEUE_PATH)
-    else:
-        print("Filtered out. Re-run with --force to override.")
-        sys.exit(0)
-
-# 2. Board review
-print("\n=== BOARD REVIEW ===")
-with open(MASTER_RESUME_PATH) as f:
-    master = f.read()
-result = asyncio.run(board.run_advisory_board(job, master))
-job["board_reviews"] = result["reviews"]
-job["board_decision"] = result["board_decision"]
-decision = result["board_decision"]
-print(f"action={decision.get('action')}  score={decision.get('composite_score')}")
-print(f"strength: {decision.get('top_strength','')[:100]}")
-print(f"concern:  {decision.get('top_concern','')[:100]}")
-
-if decision.get("action") != "apply":
-    if FORCE:
-        print("Board says defer — overriding per user request, proceeding")
-    else:
-        print("Board says defer/skip. Re-run with --force to override.")
-        save_queue(queue, JOB_QUEUE_PATH)
-        sys.exit(0)
-
-job["status"] = "board_approved"
-
-# 3. Resume tailoring
-print("\n=== RESUME TAILORING ===")
-slug = slugify(f"{job['company']}_{job['title']}")
-v1path = f"outputs/tailored_resumes/{slug}.txt"
-if os.path.exists(v1path):
-    os.remove(v1path)
-resume.tailor_and_save(job)
-
-# 4. Resume board
-print("\n=== RESUME BOARD ===")
-with open(v1path) as f:
-    draft = f.read()
-rb_result = asyncio.run(resume_board.review_resume(draft, job))
-job["resume_board"] = rb_result["raw_reviews"]
-job["resume_scorecard"] = rb_result["scorecard"]
-v2path = f"outputs/tailored_resumes/{slug}_v2.txt"
-with open(v2path, "w") as f:
-    f.write(rb_result["final_resume"])
-job["resume_v2_path"] = v2path
-sc = rb_result["scorecard"]
-print(f"composite={sc.get('composite_score')}  ats={sc.get('ats_score')}  impact={sc.get('impact_score')}  ready={sc.get('ready_to_submit')}")
-if sc.get("blocker"):
-    print(f"blocker: {sc['blocker'][:200]}")
-
-# 5. Cover letter
-print("\n=== COVER LETTER ===")
-coverletter.generate_and_save(job)
-
-# Save queue
-save_queue(queue, JOB_QUEUE_PATH)
-
-print("\n=== DONE ===")
+path = resume.tailor_and_save(job)
+print(f"Resume ready: {path}")
+print("Next: python3 main.py apply")
