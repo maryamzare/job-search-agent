@@ -8,7 +8,11 @@ Usage:
   python main.py coverletter  — write cover letters for shortlisted jobs
   python main.py apply        — walk through shortlisted jobs to apply
   python main.py status       — show tracker summary
-  python main.py pipeline     — show active pipeline (excludes filtered)
+  python main.py pipeline     — show actionable jobs (in progress / ready to apply)
+  python main.py history      — show applied/waiting, interviewing, rejected, closed, offers
+  python main.py update <company> <title> <status>
+                               — record a status transition (applied, interviewing,
+                                 questionnaire_submitted, offer, rejected, closed, ...)
   python main.py run          — run lean pipeline: discover → score → resume
 """
 
@@ -85,6 +89,19 @@ def cmd_pipeline():
     tracker.print_pipeline()
 
 
+def cmd_history():
+    tracker.print_history()
+
+
+def cmd_update():
+    if len(sys.argv) != 5:
+        print("Usage: python main.py update <company> <title> <status>")
+        print(f"Valid statuses: {', '.join(tracker.VALID_STATUSES)}")
+        sys.exit(1)
+    _, _, company, title, new_status = sys.argv
+    tracker.update_status(company, title, new_status)
+
+
 def cmd_run():
     print("=== Running lean interview-throughput pipeline ===")
     cmd_discover()
@@ -102,6 +119,8 @@ COMMANDS = {
     "apply": cmd_apply,
     "status": cmd_status,
     "pipeline": cmd_pipeline,
+    "history": cmd_history,
+    "update": cmd_update,
     "run": cmd_run,
 }
 
