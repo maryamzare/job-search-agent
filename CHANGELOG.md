@@ -18,6 +18,42 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **`discover` now searches exactly five sources, each fault-isolated.** LinkedIn
+  (unchanged, keeps `LINKEDIN_LOOKBACK_HOURS`), Apple Careers, Anthropic
+  (Greenhouse), OpenAI (Ashby), Oracle Careers. Every source runs through a new
+  `_safe(...)` wrapper that catches any exception, logs it, and returns `[]`, so
+  one source failing (HTTP error, bad JSON, changed schema) never stops the
+  others. `discover` still never scores jobs or generates résumés. New tests:
+  `tests/test_discovery_sources.py` (verified against the live responses).
+
+  - **Apple** (`search_jobs_apple`): the old `POST jobs.apple.com/api/role/search`
+    now 301-redirects to a not-found page. The adapter now reads the
+    `jobs.apple.com/en-us/search` page's embedded `__staticRouterHydrationData`
+    (`loaderData.search`), paginates via `totalRecords` (up to `APPLE_MAX_PAGES`),
+    and pulls the full JD from the detail page's `loaderData.jobDetails.jobsData`
+    (summary + description + minimum/preferred qualifications), falling back to
+    the search summary on failure.
+  - **OpenAI** (`search_jobs_ashby`, `api.ashbyhq.com/posting-api/job-board/openai`):
+    OpenAI is not on Greenhouse. Ashby returns a city-only `location`, so the
+    country is taken from `address.postalAddress.addressCountry` and `isRemote`
+    is honored.
+  - **Oracle** (`search_jobs_oracle`): the list endpoint
+    (`recruitingCEJobRequisitions`, paginated by `offset`/`TotalJobsCount`)
+    returns `ExternalDescriptionStr` / `ExternalResponsibilitiesStr` /
+    `ExternalQualificationsStr` as `null`; the complete description is now built
+    from the per-requisition **detail** endpoint
+    (`recruitingCEJobRequisitionDetails`) — summary + responsibilities +
+    qualifications. `ORACLE_API_BASE` + `ORACLE_SITE_NUMBER` are the only
+    tenant-specific constants.
+  - **`_location_matches`** no longer matches a bare `us` substring (which had
+    accepted Houston, Belarus, Australia, …). It now checks explicit country
+    fields, the `United States`/`USA` forms, and word-boundary US state codes.
+  - **`deduplicate()`** keys on the canonical URL, matching the
+    posting-identity rule in `ARCHITECTURE.md`; two requisitions with the same
+    company/title but different URLs are both kept.
+  - Apple and Oracle records missing a position/requisition ID are dropped and
+    logged, never turned into a URL with an empty ID.
+
 - **Resume generation is now one job at a time, validated, and produces a `.docx`.**
   `python3 main.py resume-one <job-id>` is the only resume path. It resolves
   exactly one job by an exact `job_artifact_key` match (missing / unknown /
@@ -93,6 +129,10 @@ All notable changes to this project are documented here.
   job) and `module3_resume.tailor_and_save()` / `save_tailored_resume()`. There is
   now one validated generation path; nothing can create a resume without going
   through it.
+- **The Lever discovery adapter** (`search_jobs_lever`) and every Lever company
+  (Netflix, Canva, Airtable, Vercel), plus the non-target Greenhouse companies
+  (Scale AI, Figma, Notion, Stripe, Databricks, Cohere, Mistral AI, Perplexity).
+  Greenhouse is retained for Anthropic only.
 
 ### Dependencies
 

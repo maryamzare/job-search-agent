@@ -10,7 +10,7 @@ discover → score → (stop) → resume-list → resume-one <job-id> → apply 
 
 | Stage | Module | Responsibility |
 |---|---|---|
-| Discovery | `modules/module1_discovery.py` | Finds recent LinkedIn, Greenhouse, and Lever postings |
+| Discovery | `modules/module1_discovery.py` | Searches five sources — LinkedIn, Apple Careers, Anthropic (Greenhouse), OpenAI (Ashby), Oracle Careers — each isolated so one failing does not stop the rest |
 | Scoring | `modules/module2_scoring.py` | Produces one validated 0–100 fit score; failures remain retryable |
 | Resume | `modules/module3_resume.py` | Generates ONE validated `.docx` resume for ONE job, on request |
 | Cover letter | `modules/module4_coverletter.py` | Optional generation when an application requires one |
