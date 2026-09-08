@@ -422,18 +422,47 @@ def job_artifact_key(job: dict) -> str:
     return f"{base}_{digest}"
 
 
-def parse_llm_json(text: str) -> dict:
-    """Strip ```json ... ``` fences (if present) and parse a JSON object.
+_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)```", re.S)
 
-    Returns {"parse_error": <first 200 chars>} if the text isn't valid JSON,
-    so callers can detect failure without a try/except at every call site.
+
+def parse_llm_json(text: str) -> dict:
+    """Parse a JSON object out of an LLM response.
+
+    Tries, in order:
+      1. The complete response, after stripping a fence anchored at its very
+         start/end -- today's plain-JSON and start-anchored-fence behavior.
+      2. If that fails, every ```json ... ``` (or bare ```) fenced block
+         found anywhere in the response is extracted by its fence
+         delimiters -- never by brace-counting, which breaks on nested
+         objects/arrays -- and each candidate is parsed independently. This
+         covers a model that adds explanatory prose before the fence despite
+         being told not to.
+
+    Returns the parsed value when exactly one candidate parses as valid
+    JSON. Returns {"parse_error": <first 200 chars>} if nothing parses, or
+    if more than one fenced block parses -- multiple valid blocks are
+    ambiguous, and guessing which one the caller meant would defeat the
+    point of failing closed. This function only finds and parses JSON; it
+    never checks schema -- callers validate their own expected shape (e.g.
+    requiring an "issues" list).
     """
-    text = re.sub(r"^```(?:json)?\s*", "", text.strip())
-    text = re.sub(r"\s*```$", "", text)
+    stripped = re.sub(r"^```(?:json)?\s*", "", text.strip())
+    stripped = re.sub(r"\s*```$", "", stripped)
     try:
-        return json.loads(text)
+        return json.loads(stripped)
     except json.JSONDecodeError:
-        return {"parse_error": text[:200]}
+        pass
+
+    candidates = []
+    for block in _FENCE_RE.findall(text):
+        try:
+            candidates.append(json.loads(block.strip()))
+        except json.JSONDecodeError:
+            continue
+
+    if len(candidates) == 1:
+        return candidates[0]
+    return {"parse_error": text[:200]}
 
 
 def load_json(path: str) -> dict:

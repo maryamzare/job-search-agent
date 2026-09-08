@@ -38,6 +38,8 @@ def module_for_label(label: str) -> str:
         return "module2b_board_review"
     if label.startswith("resume_board"):
         return "module3b_resume_board"
+    if label.startswith("resume_qc"):
+        return "module3_resume"
     return "unknown"
 
 

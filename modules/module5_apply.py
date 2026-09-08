@@ -12,8 +12,11 @@ from modules.util import job_artifact_key, load_queue, save_queue
 
 
 def _resume_path_for(job: dict) -> Path:
-    """Return the resume generated for this exact posting."""
-    return Path(RESUME_OUTPUT_DIR) / f"{job_artifact_key(job)}.txt"
+    """Return the resume generated for this exact posting. resume-one now
+    produces a .docx; .txt is only for legacy pre-source-of-truth artifacts."""
+    base = Path(RESUME_OUTPUT_DIR) / job_artifact_key(job)
+    docx = base.with_suffix(".docx")
+    return docx if docx.exists() else base.with_suffix(".txt")
 
 
 def print_application_materials(job: dict) -> bool:
@@ -30,7 +33,9 @@ def print_application_materials(job: dict) -> bool:
     print()
 
     if not resume_path.exists():
-        print(f"  BLOCKED: Resume file not found — run 'python3 main.py resume' first")
+        print("  BLOCKED: Resume file not found — run "
+              "'python3 main.py resume-one <job-id>' first "
+              "(get the id from 'python3 main.py resume-list')")
     if not cl_path.exists():
         print("  NOTE: No cover letter (generate one only if the application requires it)")
     return resume_path.exists()

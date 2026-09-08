@@ -1,0 +1,24 @@
+# Contact block for the generated .docx resume.
+#
+# Copy this file to  data/contact_block.txt  and fill in real values.
+# The real file is git-ignored and should be readable only by you:
+#     cp data/contact_block.example.txt data/contact_block.txt
+#     chmod 600 data/contact_block.txt
+#
+# Rules enforced by modules/module3_resume.py:
+#   - This is the ONLY source for the resume's Contact line.
+#   - It is never sent to model/validation API calls.
+#   - Its values never appear in logs or error messages.
+#   - The final .docx DOES contain these values (it is an application document).
+#
+# Format: one "key: value" per line. Blank lines and #-comments ignored.
+# Recognized keys: name, email, phone, location, linkedin, github, website
+# "name" and "location" are required; the rest are optional.
+
+name: Jane Doe
+email: jane@example.com
+phone: (555) 555-0100
+location: Seattle, WA
+linkedin: linkedin.com/in/janedoe
+github:
+website:

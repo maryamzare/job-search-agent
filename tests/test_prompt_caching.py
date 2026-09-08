@@ -174,12 +174,23 @@ Write the cover letter."""
         self.assertEqual(result, "Dear hiring team...")
 
 
-class TestModule3ResumePromptSplit(_ResumeFileMixin, unittest.TestCase):
-    module = m3
+class TestModule3ResumePromptSplit(unittest.TestCase):
+    """module3_resume.tailor_resume now sends the authoritative career profile
+    as the cache-marked stable block and the job specifics as the volatile
+    block. (It no longer reads a master resume.)"""
 
-    def _tailor(self, job):
+    PROFILE = "AUTHORITATIVE PROFILE\n" + ("Fact line. " * 40)
+
+    def setUp(self):
+        self._orig_stage_log = util.PIPELINE_STAGE_LOG_PATH
+        util.PIPELINE_STAGE_LOG_PATH = tempfile.mktemp(suffix=".jsonl")
+
+    def tearDown(self):
+        util.PIPELINE_STAGE_LOG_PATH = self._orig_stage_log
+
+    def _tailor(self, job, **kw):
         with patch.object(m3, "tracked_create", return_value=_fake_response("TAILORED RESUME TEXT")) as mock_create:
-            m3.tailor_resume(job)
+            m3.tailor_resume(job, self.PROFILE, **kw)
         return mock_create.call_args.kwargs
 
     def test_content_is_two_blocks_with_cache_control_on_the_first_only(self):
@@ -189,38 +200,32 @@ class TestModule3ResumePromptSplit(_ResumeFileMixin, unittest.TestCase):
         self.assertEqual(content[0]["cache_control"], {"type": "ephemeral"})
         self.assertNotIn("cache_control", content[1])
 
-    def test_master_resume_moved_to_the_first_stable_block(self):
-        # This module reorders content (job-then-resume -> resume-then-job)
-        # so the stable content forms a prefix - required for caching, the
-        # one deliberate prompt-content change in this round.
+    def test_profile_is_the_stable_block_job_is_the_volatile_block(self):
         kwargs = self._tailor({"title": "Sr TPM", "company": "Acme", "description": "Do the thing."})
         stable, volatile = kwargs["messages"][0]["content"]
-        self.assertIn(RESUME_TEXT, stable["text"])
+        self.assertIn(self.PROFILE, stable["text"])
         self.assertNotIn("Sr TPM", stable["text"])
         self.assertIn("Sr TPM", volatile["text"])
         self.assertIn("Acme", volatile["text"])
         self.assertIn("Do the thing.", volatile["text"])
-        self.assertNotIn(RESUME_TEXT, volatile["text"])
+        self.assertNotIn(self.PROFILE, volatile["text"])
 
-    def test_no_information_lost_by_the_reorder(self):
-        job = {"title": "Sr TPM", "company": "Acme", "description": "Do the thing."}
-        kwargs = self._tailor(job)
-        stable, volatile = kwargs["messages"][0]["content"]
-        combined = stable["text"] + volatile["text"]
-        for expected_fragment in (
-            RESUME_TEXT, job["title"], job["company"], job["description"],
-            "Rewrite the resume to best match this job.",
-        ):
-            self.assertIn(expected_fragment, combined)
+    def test_summary_toggle_changes_only_the_volatile_block(self):
+        off = self._tailor({"title": "T", "company": "C", "description": "d"}, include_summary=False)
+        on = self._tailor({"title": "T", "company": "C", "description": "d"}, include_summary=True)
+        self.assertEqual(off["messages"][0]["content"][0]["text"],
+                         on["messages"][0]["content"][0]["text"])  # stable prefix identical
+        self.assertIn("Set 'summary' to null", off["messages"][0]["content"][1]["text"])
+        self.assertIn("Include a concise 'summary'", on["messages"][0]["content"][1]["text"])
 
-    def test_final_instruction_still_ends_the_prompt(self):
-        kwargs = self._tailor({"title": "Sr TPM", "company": "Acme", "description": "Do the thing."})
-        _, volatile = kwargs["messages"][0]["content"]
-        self.assertTrue(volatile["text"].rstrip().endswith("Rewrite the resume to best match this job."))
+    def test_system_prompt_is_a_plain_string(self):
+        kwargs = self._tailor({"title": "T", "company": "C", "description": "d"})
+        self.assertEqual(kwargs["system"], m3.TAILOR_SYSTEM_PROMPT)
+        self.assertIsInstance(kwargs["system"], str)
 
-    def test_return_value_unaffected(self):
+    def test_return_value_is_raw_model_text(self):
         with patch.object(m3, "tracked_create", return_value=_fake_response("TAILORED RESUME TEXT")):
-            result = m3.tailor_resume({"title": "Sr TPM", "company": "Acme", "description": "d"})
+            result = m3.tailor_resume({"title": "Sr TPM", "company": "Acme", "description": "d"}, self.PROFILE)
         self.assertEqual(result, "TAILORED RESUME TEXT")
 
 

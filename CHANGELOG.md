@@ -18,6 +18,46 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **Resume generation is now one job at a time, validated, and produces a `.docx`.**
+  `python3 main.py resume-one <job-id>` is the only resume path. It resolves
+  exactly one job by an exact `job_artifact_key` match (missing / unknown /
+  ineligible / ambiguous IDs exit non-zero with no API call), uses
+  `data/career_profile_source_of_truth.md` as the sole factual source
+  (historical `master_resume*.txt` files are not inputs to it), tailors to the
+  job description, then runs an authenticity + formatting pass and
+  deterministic + semantic validation. Deterministic checks cover banned
+  phrases, em/en dashes, section order, default Summary omission, one-column
+  structure with no tables/text boxes/images/headers/footers, date-format
+  consistency, certification names and years (against profile §3), education
+  years (against §2), employment dates, role-header completeness, and
+  context-classified numbers (contact vs. date vs. achievement metric), plus
+  the profile's DO-NOT-COMBINE pairs — with the profile's documented S5
+  exception preserved. Validation fails closed: an unparseable or unavailable
+  semantic result is treated as a failure. On any unresolved issue the run
+  writes only `outputs/resume_reviews/<job-id>.review.md` and saves no resume.
+  On success it renders one ATS-safe single-column `.docx` to a temp file that
+  must reopen cleanly before being promoted to
+  `outputs/tailored_resumes/<job-id>.docx`; an existing final is never
+  silently overwritten (`--replace` moves it to `superseded/` first, and is
+  restored if the new run fails). `--with-summary` opts the Summary section in.
+- **Deterministic certification check is separator-insensitive.** It now parses
+  §3 of the authoritative profile into approved / not-held name sets and
+  compares a canonical form (lowercased, trailing year dropped, and commas /
+  pipes / slashes / parentheses / hyphens / any Unicode dash collapsed to
+  spaces), so an approved cert written "Certified Scrum Master, Scrum Alliance"
+  or "AI Foundations — OpenAI Academy" matches "Certified Scrum Master —
+  Scrum Alliance" in the profile. Not-held names (SAFe / SPC, Google UX
+  Design) and certs absent from §3 are still rejected. The DO-NOT-COMBINE
+  finding now records the full offending bullet instead of an 80-character
+  prefix.
+- **`python3 main.py run` stops after scoring** and prints how to pick one job.
+  Bare `python3 main.py resume` prints the same guidance and exits without
+  generating anything. `run_job.py` is retired and exits with instructions.
+  `.docx` styling constants are frozen in `modules/resume_style.py`, measured
+  read-only from `MaryamZareResume 4-21-25.docx`; that file is not a runtime
+  dependency. Contact details come only from git-ignored `data/contact_block.txt`
+  and are never sent to model calls or written to logs.
+
 - **Retry policy now distinguishes rate limiting from quota exhaustion.** The first fix for the retry-everything bug (below) deliberately excluded HTTP 429 from the retryable set entirely, to keep that fix minimal. On review, that conflated two failure modes that need opposite handling: a 429 rate limit clears in seconds to minutes and should be retried; account-level quota exhaustion clears at a specific future date and retrying it is pointless. `modules/util.py` now exposes `classify_error()` with four categories — `rate_limited` (retry with backoff, honoring a `Retry-After` header when present), `quota_exceeded` (fail fast, clear notification, never retried), `transient` (network/timeout/5xx, retry with backoff), `non_retryable` (auth/permission/invalid-request/not-found, fail fast) — with quota-exhaustion message content checked before status code, so a quota cap reported via an unexpected status still classifies correctly. See `ARCHITECTURE.md` → Retry Policy for the full design, including why `with_retry` doesn't call `modules/eval_recovery.py` directly.
 
 ### Fixed
@@ -49,3 +89,13 @@ All notable changes to this project are documented here.
 
 - Unused `LINKEDIN_EMAIL`, `LINKEDIN_PASSWORD`, `SERP_API_KEY` config vars and `playwright` / `rich` / `typer` dependencies.
 - Dead `sync_client` in `module3b_resume_board.py`.
+- **Batch resume generation** (`main.py resume` looping every shortlisted/board_approved
+  job) and `module3_resume.tailor_and_save()` / `save_tailored_resume()`. There is
+  now one validated generation path; nothing can create a resume without going
+  through it.
+
+### Dependencies
+
+- Added `python-docx>=1.1.0` (installed into `.venv`; pulls `lxml`). Used only by
+  the `resume-one` render path — `modules/module3_resume` still imports on an
+  interpreter without it, and refuses to render with a clear message.

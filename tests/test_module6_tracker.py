@@ -167,5 +167,60 @@ class TestUpdateStatusTransitionsAndTimestamps(unittest.TestCase):
         self.assertEqual(updated["status"], "applied")
 
 
+class TestUpdateStatusNotesCompatibility(unittest.TestCase):
+    """"notes" predates the list-based schema on some older queue entries,
+    where it's a single string rather than a list. update_status must
+    normalize any shape to a list without ever discarding what was there."""
+
+    def _run_update(self, jobs, company, title, new_status):
+        queue = {"jobs": jobs}
+        with patch.object(tracker, "load_queue", return_value=queue), \
+             patch.object(tracker, "save_queue") as save:
+            tracker.update_status(company, title, new_status)
+        return queue["jobs"][0], save
+
+    def _run_update_with_note(self, job, note_text):
+        queue = {"jobs": [job]}
+        with patch.object(tracker, "load_queue", return_value=queue), \
+             patch.object(tracker, "save_queue") as save:
+            tracker.update_status("Acme", "TPM", "applied", notes=note_text)
+        return queue["jobs"][0], save
+
+    def test_existing_string_note_is_preserved_and_converted_to_a_list(self):
+        job = _job("Acme", "TPM", "shortlisted", notes="Sourced via LinkedIn 2026-01-01.")
+        updated, save = self._run_update_with_note(job, "Applied today.")
+        self.assertIsInstance(updated["notes"], list)
+        self.assertEqual(updated["notes"][0], "Sourced via LinkedIn 2026-01-01.")
+        self.assertTrue(updated["notes"][1].endswith("Applied today."))
+        save.assert_called_once()
+
+    def test_existing_list_note_is_preserved_unchanged_and_appended_to(self):
+        job = _job("Acme", "TPM", "shortlisted", notes=["2026-01-01: Sourced via LinkedIn."])
+        updated, _ = self._run_update_with_note(job, "Applied today.")
+        self.assertEqual(len(updated["notes"]), 2)
+        self.assertEqual(updated["notes"][0], "2026-01-01: Sourced via LinkedIn.")
+        self.assertTrue(updated["notes"][1].endswith("Applied today."))
+
+    def test_null_notes_becomes_a_list(self):
+        job = _job("Acme", "TPM", "shortlisted", notes=None)
+        updated, _ = self._run_update_with_note(job, "Applied today.")
+        self.assertIsInstance(updated["notes"], list)
+        self.assertEqual(len(updated["notes"]), 1)
+        self.assertTrue(updated["notes"][0].endswith("Applied today."))
+
+    def test_missing_notes_key_becomes_a_list(self):
+        job = _job("Acme", "TPM", "shortlisted")  # no "notes" key at all
+        self.assertNotIn("notes", job)
+        updated, _ = self._run_update_with_note(job, "Applied today.")
+        self.assertIsInstance(updated["notes"], list)
+        self.assertEqual(len(updated["notes"]), 1)
+        self.assertTrue(updated["notes"][0].endswith("Applied today."))
+
+    def test_no_notes_argument_does_not_touch_the_notes_field(self):
+        job = _job("Acme", "TPM", "shortlisted", notes="Sourced via LinkedIn.")
+        updated, _ = self._run_update([job], "Acme", "TPM", "applied")
+        self.assertEqual(updated["notes"], "Sourced via LinkedIn.")  # untouched, not normalized
+
+
 if __name__ == "__main__":
     unittest.main()

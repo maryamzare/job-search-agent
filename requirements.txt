@@ -1,4 +1,9 @@
 anthropic>=0.28.0
+# The Anthropic SDK resolved in this environment does not pull the standard
+# `httpx` package, but the test suite and tooling import `httpx` by name, so it
+# is pinned here explicitly (official httpx, 0.x line).
+httpx>=0.23,<1
 requests>=2.31.0
 beautifulsoup4>=4.12.0
 python-dotenv>=1.0.0
+python-docx>=1.1.0,<2.0

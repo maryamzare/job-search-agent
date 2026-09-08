@@ -66,8 +66,12 @@ class _IsolatedEnvMixin:
         self.tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
         self.tmp.write(RESUME_TEXT)
         self.tmp.close()
-        self._resume_patcher = patch.object(self.module, "MASTER_RESUME_PATH", self.tmp.name)
-        self._resume_patcher.start()
+        # module3_resume no longer reads a master resume; only patch modules
+        # that still have the attribute.
+        self._resume_patcher = None
+        if hasattr(self.module, "MASTER_RESUME_PATH"):
+            self._resume_patcher = patch.object(self.module, "MASTER_RESUME_PATH", self.tmp.name)
+            self._resume_patcher.start()
 
         self._original_stage_log_path = util.PIPELINE_STAGE_LOG_PATH
         self._original_usage_log_path = util.LLM_USAGE_LOG_PATH
@@ -78,7 +82,8 @@ class _IsolatedEnvMixin:
         self._sleep_patcher.start()
 
     def tearDown(self):
-        self._resume_patcher.stop()
+        if self._resume_patcher is not None:
+            self._resume_patcher.stop()
         Path(self.tmp.name).unlink(missing_ok=True)
         util.PIPELINE_STAGE_LOG_PATH = self._original_stage_log_path
         util.LLM_USAGE_LOG_PATH = self._original_usage_log_path

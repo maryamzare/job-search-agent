@@ -10,9 +10,15 @@ CLAUDE.md
 .claude/
 uber_tpm_159858.json
 
+# Contact details for the generated resume — real file is personal, only the
+# example is tracked (already covered by data/* above; kept explicit on purpose).
+data/contact_block.txt
+
 # Python
 __pycache__/
 *.pyc
+.venv/
+venv/
 
 # macOS
 .DS_Store

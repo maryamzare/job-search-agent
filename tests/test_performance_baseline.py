@@ -102,6 +102,10 @@ class TestModuleForLabel(unittest.TestCase):
         self.assertEqual(module_for_label("resume_board:chief_editor"), "module3b_resume_board")
         self.assertEqual(module_for_label("resume_board:rewrite"), "module3b_resume_board")
 
+    def test_resume_qc_prefixed_labels(self):
+        self.assertEqual(module_for_label("resume_qc:authenticity"), "module3_resume")
+        self.assertEqual(module_for_label("resume_qc:validate"), "module3_resume")
+
     def test_unrecognized_label_maps_to_unknown_not_a_crash(self):
         self.assertEqual(module_for_label("something_new"), "unknown")
 

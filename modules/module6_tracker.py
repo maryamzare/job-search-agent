@@ -203,7 +203,17 @@ def update_status(company: str, title: str, new_status: str, notes: str = "") ->
                 job.setdefault("closed_or_expired_at", now)
 
             if notes:
-                job.setdefault("notes", []).append(f"{today}: {notes}")
+                # "notes" predates the list-based schema on some older queue
+                # entries, where it's a single string rather than a list;
+                # missing/None entries also need a starting point. Normalize
+                # to a list in place without discarding whatever was there.
+                existing = job.get("notes")
+                if existing is None:
+                    existing = []
+                elif isinstance(existing, str):
+                    existing = [existing]
+                existing.append(f"{today}: {notes}")
+                job["notes"] = existing
             save_queue(queue)
             print(f"[tracker] Updated {title} @ {company} → {new_status}")
             return
