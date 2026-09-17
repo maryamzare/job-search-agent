@@ -113,6 +113,8 @@ Resume excerpt:
 Job posting:
 Title: {job['title']}
 Company: {job['company']}
+Location: Not stated
+Compensation evidence from posting: Not stated
 Description:
 {job['description'][:2000]}
 

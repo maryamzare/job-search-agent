@@ -125,11 +125,14 @@ def _fetch_linkedin_page(role: str, location: str, start: int, hours: int | None
         title = title_el.get_text(strip=True)
         if not _title_matches(title):
             continue
+        job_location = location_el.get_text(strip=True) if location_el else location
+        if not _location_matches(job_location):
+            continue
         job_url = link_el["href"].split("?")[0]
         jobs.append({
             "title": title,
             "company": company_el.get_text(strip=True),
-            "location": location_el.get_text(strip=True) if location_el else location,
+            "location": job_location,
             "url": job_url,
             "apply_url": job_url,
             "description": _fetch_linkedin_description(job_url),

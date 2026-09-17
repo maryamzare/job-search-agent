@@ -18,6 +18,19 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **U.S.-wide high-pay location exception in scoring.** LinkedIn discovery
+  now also searches the United States, while keeping Seattle and remote
+  searches. `module2_scoring.LOCATION_RULE` tells the scorer to skip a
+  non-Seattle location gap only when the job is U.S.-based, its company is
+  on `config.BIG_COMPANIES`, the skills match is strong, and the posting
+  supports annual total compensation of at least the user-selected
+  `config.HIGH_PAY_TC_USD` ($300,000). Unstated compensation does not qualify.
+  Job location and available compensation evidence are passed explicitly to
+  the scorer, including pay lines beyond the description excerpt. The
+  U.S.-wide LinkedIn search rejects non-U.S. results before fetching details.
+  The exception affects future discovery and scoring runs; existing scores
+  are not changed. New tests:
+  `tests/test_scoring_location_rule.py`.
 - **`discover` now searches exactly five sources, each fault-isolated.** LinkedIn
   (unchanged, keeps `LINKEDIN_LOOKBACK_HOURS`), Apple Careers, Anthropic
   (Greenhouse), OpenAI (Ashby), Oracle Careers. Every source runs through a new

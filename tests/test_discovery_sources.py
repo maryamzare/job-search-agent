@@ -45,6 +45,21 @@ def apple_html(obj: dict) -> str:
 # --------------------------------------------------------------------------- #
 # Location matcher — finding 4 (no bare "us" substring)
 # --------------------------------------------------------------------------- #
+class TestLinkedInUSSearch(unittest.TestCase):
+    def test_us_wide_search_rejects_non_us_result(self):
+        def card(loc, ident):
+            return (f'<li><h3 class="base-search-card__title">Senior Technical Program Manager</h3>'
+                    f'<h4 class="base-search-card__subtitle">Apple</h4>'
+                    f'<span class="job-search-card__location">{loc}</span>'
+                    f'<a class="base-card__full-link" href="https://www.linkedin.com/jobs/view/{ident}/">Open</a></li>')
+        page = card("Austin, TX", 123) + card("London, United Kingdom", 456)
+        with patch.object(d.requests, "get", return_value=resp(text=page)), \
+             patch.object(d, "_fetch_linkedin_description", return_value="description"), \
+             patch.object(d.time, "sleep"):
+            jobs = d._fetch_linkedin_page("Senior Technical Program Manager", "United States", 0)
+        self.assertEqual([j["location"] for j in jobs], ["Austin, TX"])
+
+
 class TestLocationMatcher(unittest.TestCase):
     def test_accepts_us_forms(self):
         for loc in ["Houston, TX, United States", "Austin, TX", "Seattle, WA",

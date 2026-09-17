@@ -276,6 +276,14 @@ Absolute rules:
       never be combined with M12 (3 direct reports, IHME) or M13 (8 direct
       reports, INRIX). Influence reach and direct management are different
       claims; never let a bullet imply the larger number is a headcount.
+    * The INRIX-Maps figures (6M+ miles, 99.99% reliability, $20M program,
+      40% cost reduction, 60% processing/ingestion-time reduction, 210,000
+      signalized intersections, 80+ stakeholders) each stand alone. Never
+      let two of
+      them share a bullet or a sentence, and never let one modify another
+      (e.g. "$20M program that cut costs 40%" or "60% faster, reducing
+      costs 40%") — even when both figures are true, stating them together
+      claims a link between them that the profile does not document.
   Every metric must stay attached only to the project, scope, and meaning the
   profile documents for it — never let a number drift onto a different
   project, role, or claim than the one it was measured on.
@@ -302,10 +310,11 @@ Absolute rules:
   other roles only to the year) — that is not an inconsistency to smooth
   over by inventing or removing precision.
 - If the profile marks a credential as not yet completed (e.g. "expected
-  YYYY"), the credential string itself must say so explicitly (e.g. "M.P.S.,
-  Artificial Intelligence Management (Expected 2027)"). A bare year in the
-  "year" field is not enough on its own and misrepresents an in-progress
-  credential as already awarded.
+  YYYY"), the credential string itself must say so explicitly (e.g. "M.S.
+  Professional Studies, AI Management (Expected 2027)") — reproduce the
+  profile's own credential wording exactly; never abbreviate, reorder, or
+  paraphrase it. A bare year in the "year" field is not enough on its own
+  and misrepresents an in-progress credential as already awarded.
 - Reverse-chronological experience. Every role: title, company, location, dates.
 - Prioritize relevance over completeness. Give more bullets, and more detail,
   to the experience most relevant to the target job's domain (e.g. FinTech,
@@ -366,7 +375,7 @@ def tailor_resume(job: dict, career_profile: str = "", *, include_summary: bool 
         def _call():
             return tracked_create(
                 client, "tailor_resume",
-                model=CLAUDE_MODEL, max_tokens=MAX_TOKENS,
+                model=CLAUDE_MODEL, max_tokens=RESUME_JSON_MAX_TOKENS,
                 system=TAILOR_SYSTEM_PROMPT,
                 messages=_tailor_messages(job, career_profile, include_summary),
             )
@@ -427,6 +436,33 @@ Hard rules, zero exceptions:
 Return ONLY the JSON object in the same schema you received."""
 
 
+# A full résumé JSON is ~3-4k output tokens on its own; the QC model also tends
+# to reason in prose first, so 4096 truncates it mid-object. Give the JSON-
+# emitting calls real headroom.
+RESUME_JSON_MAX_TOKENS = 8000
+
+
+def _loose_json_object(text: str):
+    """`parse_llm_json` first; then, tolerant of a reasoning preamble the model
+    sometimes writes despite instructions, decode the first complete `{...}`
+    object in the text. Returns a dict, or None if nothing parses."""
+    import json
+    parsed = parse_llm_json(text)
+    if "parse_error" not in parsed:
+        return parsed
+    dec = json.JSONDecoder()
+    i = text.find("{")
+    while i != -1:
+        try:
+            obj, _ = dec.raw_decode(text[i:])
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError:
+            pass
+        i = text.find("{", i + 1)
+    return None
+
+
 def authenticity_and_format_pass(resume: dict, career_profile: str) -> dict:
     import json
     stable = f"Authoritative career profile (facts must stay within this):\n{career_profile}"
@@ -435,7 +471,7 @@ def authenticity_and_format_pass(resume: dict, career_profile: str) -> dict:
         def _call():
             return tracked_create(
                 client, "resume_qc:authenticity",
-                model=CLAUDE_MODEL, max_tokens=MAX_TOKENS,
+                model=CLAUDE_MODEL, max_tokens=RESUME_JSON_MAX_TOKENS,
                 system=AUTHENTICITY_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": [
                     {"type": "text", "text": stable, "cache_control": {"type": "ephemeral"}},
@@ -443,8 +479,8 @@ def authenticity_and_format_pass(resume: dict, career_profile: str) -> dict:
                 ]}],
             )
         response = with_retry_sync(_call)
-    revised = parse_llm_json(response.content[0].text)
-    if "parse_error" in revised:
+    revised = _loose_json_object(response.content[0].text)
+    if revised is None:
         raise RenderFailure("authenticity pass did not return valid JSON")
     return revised
 
@@ -605,10 +641,15 @@ def validate_deterministic(resume: dict, contact: dict, career_profile: str,
         if c.get("year") and c["year"] not in cert_years:
             issues.append(f"certification year '{c['year']}' for '{name}' not in profile §3")
 
-    # 5. education years
+    # 5. education years — accept a bare year, a "YYYY-YYYY" / "YYYY–YYYY" range
+    # (both endpoints in §2), or a phrase like "Expected 2027" whose year(s) are
+    # all in §2. The B.S. Architecture entry is "2008–2011" in the profile.
     for e in resume.get("education", []):
-        if e.get("year") and e["year"] not in edu_years:
-            issues.append(f"education year '{e['year']}' not in profile §2")
+        yr = str(e.get("year") or "").strip()
+        if yr and yr not in edu_years:
+            found = set(re.findall(r"(?:19|20)\d{2}", yr))
+            if not (found and found <= edu_years):
+                issues.append(f"education year '{yr}' not in profile §2")
         if not (e.get("credential") and e.get("institution")):
             issues.append("education entry missing credential or institution")
 
@@ -822,8 +863,8 @@ def generate_resume_for_job(job_id: str, *, include_summary: bool = False,
     contact = load_contact_block()                     # no API call, never logged
 
     raw = tailor_resume(job, career_profile, include_summary=include_summary)   # API 1
-    resume = parse_llm_json(raw)
-    if "parse_error" in resume:
+    resume = _loose_json_object(raw)
+    if resume is None:
         raise RenderFailure("tailoring step did not return valid JSON")
 
     resume = authenticity_and_format_pass(resume, career_profile)              # API 2

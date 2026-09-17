@@ -5,10 +5,12 @@ Filters out jobs below MIN_FIT_SCORE.
 """
 
 from datetime import datetime, timezone
+import re
 
 from config import (
     ANTHROPIC_API_KEY, CLAUDE_MODEL, MAX_TOKENS, MIN_FIT_SCORE,
     JOB_QUEUE_PATH, MASTER_RESUME_PATH, CANDIDATE_PROFILE,
+    BIG_COMPANIES, HIGH_PAY_TC_USD,
 )
 from modules.util import (
     load_queue, save_queue, parse_llm_json, get_client, tracked_create, track_stage, with_retry_sync,
@@ -16,11 +18,32 @@ from modules.util import (
 
 client = get_client(ANTHROPIC_API_KEY)
 
-SYSTEM_PROMPT = """You are a job-fit analyst. Score the candidate profile against the job \
+# Location-fit exception. The candidate profile states a Seattle/hybrid/remote
+# preference, which the model otherwise (reasonably) treats as a gap for any
+# onsite non-Seattle U.S. role. This carves out the specific case where that
+# preference shouldn't cost fit score: a listed employer, strong skills match,
+# and evidence of high annual total compensation.
+LOCATION_RULE = f"""Location-fit rule — apply before scoring location as a gap:
+Do NOT treat a non-Seattle U.S. location as a fit gap, and do not reduce the
+score for it, when ALL of the following hold:
+  - the job is based in the United States (any state, onsite or hybrid), AND
+  - the company is one of: {", ".join(BIG_COMPANIES)}, AND
+  - the skills/experience match is otherwise strong, AND
+  - the posting provides credible evidence that annual total compensation
+    reaches at least ${HIGH_PAY_TC_USD:,}. Do not infer total compensation from
+    company reputation, an undisclosed salary, or the upper end of a base-pay
+    range alone.
+If any condition is not established, score location normally. Missing pay is
+unknown, not evidence that the high-pay condition is met. Do not treat a
+U.S.-remote role as a non-Seattle onsite location gap."""
+
+SYSTEM_PROMPT = f"""You are a job-fit analyst. Score the candidate profile against the job \
 description and return JSON:
   - score: integer 0-100 representing fit
   - reasons: list of 3 brief strings explaining the score
   - gaps: list of up to 3 skill/experience gaps
+
+{LOCATION_RULE}
 
 Respond ONLY with valid JSON — no explanation outside it."""
 
@@ -28,6 +51,20 @@ Respond ONLY with valid JSON — no explanation outside it."""
 def load_resume() -> str:
     with open(MASTER_RESUME_PATH) as f:
         return f.read()
+
+
+def _compensation_evidence(job: dict, description: str) -> str:
+    stated = job.get("salary") or job.get("compensation")
+    if stated:
+        return str(stated)[:800]
+    snippets = []
+    for match in re.finditer(r"\b(?:compensation|salary|pay range|base pay|total comp)\b",
+                             description, re.I):
+        snippet = description[max(0, match.start() - 40):match.end() + 180]
+        snippets.append(re.sub(r"\s+", " ", snippet).strip())
+        if sum(map(len, snippets)) >= 800:
+            break
+    return " ... ".join(snippets)[:800] or "Not stated"
 
 
 def score_job(job: dict) -> dict:
@@ -50,6 +87,8 @@ Resume excerpt:
 Job posting:
 Title: {job.get('title')}
 Company: {job.get('company')}
+Location: {job.get('location') or 'Not stated'}
+Compensation evidence from posting: {_compensation_evidence(job, description)}
 Description:
 {description[:2000]}
 
